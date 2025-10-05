@@ -1,0 +1,153 @@
+# ACPex Usage Guide
+
+```elixir
+Mix.install([
+  {:acpex, path: "/code/acpex"},
+  {:jason, "~> 1.4"}
+])
+```
+
+## Introduction
+
+This Livebook provides an interactive demonstration of the `ACPex` library. You'll learn how to define an ACP Client and Agent and see how they communicate with each other.
+
+Because ACP is designed to work over standard I/O (stdio), which isn't suitable for a Livebook environment, we will use a `MockTransport` to simulate the connection. This allows us to inspect the messages being passed back and forth.
+
+## 1. The Mock Transport
+
+This module simulates the stdio transport layer. Instead of writing to the console, it sends messages to a designated `parent` process (in this case, our Livebook process).
+
+```elixir
+defmodule MockTransport do
+  use GenServer
+
+  def start_link(parent) do
+    GenServer.start_link(__MODULE__, parent)
+  end
+
+  @impl true
+  def init(parent) do
+    {:ok, %{parent: parent}}
+  end
+
+  @impl true
+  def handle_info({:send_data, data}, state) do
+    send(state.parent, {:transport_data, data})
+    {:noreply, state}
+  end
+end
+```
+
+## 2. Defining a Client
+
+Here we define a simple client module that implements the `ACPex.Client` behaviour. When it receives a `session/update` notification from the agent, it will send a message to our Livebook process so we can see it.
+
+```elixir
+defmodule MyClient do
+  @behaviour ACPex.Client
+
+  def init([livebook_pid: pid]), do: {:ok, %{livebook_pid: pid}}
+
+  def handle_session_update(params, state) do
+    send(state.livebook_pid, {:from_agent, params})
+    {:noreply, state}
+  end
+
+  # --- Implement other required callbacks ---
+  def handle_fs_read_text_file(_params, state), do: {:error, %{code: -32601}, state}
+  def handle_fs_write_text_file(_params, state), do: {:error, %{code: -32601}, state}
+  def handle_terminal_create(_params, state), do: {:error, %{code: -32601}, state}
+  def handle_terminal_output(_params, state), do: {:error, %{code: -32601}, state}
+  def handle_terminal_wait_for_exit(_params, state), do: {:error, %{code: -32601}, state}
+  def handle_terminal_kill(_params, state), do: {:error, %{code: -32601}, state}
+  def handle_terminal_release(_params, state), do: {:error, %{code: -32601}, state}
+end
+```
+
+## 3. Defining an Agent
+
+Next, we define a simple agent. This agent will respond to a `prompt` request by sending a `session/update` notification back to the client.
+
+```elixir
+defmodule MyAgent do
+  @behaviour ACPex.Agent
+
+  def init(_args), do: {:ok, %{}}
+
+  def handle_initialize(_params, state) do
+    response = %{protocol_version: "1.0", capabilities: %{}}
+    {:ok, response, state}
+  end
+
+  def handle_prompt(%{"session_id" => sid, "prompt" => prompt}, state) do
+    # In a real agent, you would start some work here.
+    # For this demo, we'll just send a notification back immediately.
+    notification_params = %{session_id: sid, update: %{kind: "message", content: "Agent received: #{prompt}"}}
+    ACPex.Connection.send_notification(self(), "session/update", notification_params)
+
+    {:ok, %{}, state}
+  end
+
+  # --- Implement other required callbacks ---
+  def handle_authenticate(_params, state), do: {:ok, %{}, state}
+  def handle_new_session(_params, state), do: {:ok, %{session_id: "livebook-session"}, state}
+  def handle_load_session(_params, state), do: {:error, %{}, state}
+  def handle_cancel(_params, state), do: {:noreply, state}
+end
+```
+
+## 4. Running the Simulation
+
+Now, let's tie it all together. We'll start a mock transport for both the client and the agent, then start the `ACPex.Connection` processes for each, telling them to use our mock transports.
+
+```elixir
+# Start mock transports
+{:ok, client_transport} = MockTransport.start_link(self())
+{:ok, agent_transport} = MockTransport.start_link(self())
+
+# Start the Client Connection
+{:ok, client_conn} = ACPex.Connection.start_link(
+  handler_module: MyClient,
+  handler_args: [livebook_pid: self()],
+  role: :client,
+  transport_pid: agent_transport # Client talks to Agent's transport
+)
+
+# Start the Agent Connection
+{:ok, agent_conn} = ACPex.Connection.start_link(
+  handler_module: MyAgent,
+  handler_args: [],
+  role: :agent,
+  transport_pid: client_transport # Agent talks to Client's transport
+)
+
+:ok
+```
+
+## 5. Sending a Prompt
+
+Let's send a prompt from the client to the agent and see the agent's response.
+
+```elixir
+# The client sends a request to the agent
+ACPex.Connection.send_request(client_conn, "prompt", %{"session_id" => "livebook-session", "prompt" => "Hello from Livebook!"})
+
+# The agent will process it, and send a notification back.
+# The client's `handle_session_update` will then send a message to this process.
+
+receive do
+  {:from_agent, params} ->
+    IO.inspect(params, label: "Received notification from Agent via Client")
+  {:transport_data, data} ->
+    IO.inspect(data, label: "Raw response from Agent to Client")
+after
+  1000 -> :timeout
+end
+```
+
+When you evaluate the cell above, you should see the `{:from_agent, ...}` message printed, showing that the entire loop is working!
+
+1. Client sends `prompt` request.
+2. Agent receives request, sends `session/update` notification.
+3. Client receives notification, `MyClient.handle_session_update` is called.
+4. `handle_session_update` sends the `{:from_agent, ...}` message to the Livebook process.
