@@ -15,7 +15,8 @@ defmodule ACPex.MixProject do
       package: package(),
       description: description(),
       name: "ACPex",
-      source_url: @source_url
+      source_url: @source_url,
+      elixirc_paths: elixirc_paths(Mix.env())
     ]
   end
 
@@ -60,7 +61,11 @@ defmodule ACPex.MixProject do
         Behaviours: [ACPex.Client, ACPex.Agent],
         Schema: [ACPex.Schema],
         Transport: [ACPex.Transport.Stdio]
-      ]
+      ],
+      elixirc_paths: elixirc_paths(Mix.env())
     ]
   end
+
+  def elixirc_paths(:test), do: ["lib", "test/support"]
+  def elixirc_paths(_), do: ["lib"]
 end

@@ -67,7 +67,14 @@ defmodule ACPex.Connection do
 
     case handler_module.init(handler_args) do
       {:ok, handler_state} ->
-        {:ok, transport_pid} = Stdio.start_link(self())
+        transport_pid =
+          if given_pid = opts[:transport_pid] do
+            given_pid
+          else
+            transport_module = Keyword.get(opts, :transport, Stdio)
+            {:ok, pid} = transport_module.start_link(self())
+            pid
+          end
 
         state = %__MODULE__{
           transport_pid: transport_pid,
