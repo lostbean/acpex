@@ -242,7 +242,7 @@ The ACPex library will adapt this proven pattern to the Elixir/OTP paradigm:
 
 - **Rust trait / TypeScript interface → Elixir behaviour**: Elixir's behaviour
   module attribute provides a formal contract for a module's public API. The
-  library will define ACP.Agent and ACP.Client behaviours, specifying the exact
+  library will define ACPex.Agent and ACPex.Client behaviours, specifying the exact
   callbacks (e.g., handle\_prompt/2) that a user's module must implement. This
   provides compile-time checks and clear documentation for developers building
   agents or clients.
@@ -259,11 +259,11 @@ developers.
 
 ### **3.2. Process and Supervision Strategy**
 
-The cornerstone of the library will be a GenServer module, ACP.Connection. Each
+The cornerstone of the library will be a GenServer module, ACPex.Connection. Each
 running instance of this GenServer will represent and manage a single, active
 agent-client connection over stdio.
 
-The responsibilities of the ACP.Connection process are as follows:
+The responsibilities of the ACPex.Connection process are as follows:
 
 1. **Transport Management**: Upon initialization, it will spawn and link to a
    dedicated transport process (or port) responsible for the low-level,
@@ -282,7 +282,7 @@ The responsibilities of the ACP.Connection process are as follows:
    the user's code to handle the business logic.
 
 To ensure robustness and align with OTP design principles, the library will
-provide a child\_spec/1 function. This allows an ACP.Connection process to be
+provide a child\_spec/1 function. This allows an ACPex.Connection process to be
 easily embedded within a standard Elixir supervision tree.15 If the connection
 process crashes due to an unexpected error (e.g., a bug in the user's callback
 code or a protocol violation), the supervisor can automatically restart it
@@ -297,21 +297,21 @@ a minimal surface area to the developer.
 The primary entry points for starting a connection will be:
 
 - ACP.start\_agent(agent\_module, agent\_init\_args \\\\): This function will
-  start and link an ACP.Connection GenServer configured to act as an **agent**.
-  It takes the name of the user's module, which must implement the ACP.Agent
+  start and link an ACPex.Connection GenServer configured to act as an **agent**.
+  It takes the name of the user's module, which must implement the ACPex.Agent
   behaviour, and optional initial arguments for that module.
 - ACP.start\_client(client\_module, client\_init\_args \\\\): This function will
-  start and link an ACP.Connection GenServer configured to act as a **client**.
-  It takes the user's client module, which must implement the ACP.Client
+  start and link an ACPex.Connection GenServer configured to act as a **client**.
+  It takes the user's client module, which must implement the ACPex.Client
   behaviour.
 
 The core of the user's interaction with the library will be through implementing
 one of two behaviours:
 
-- @behaviour ACP.Agent: Defines the contract for an agent implementation. It
+- @behaviour ACPex.Agent: Defines the contract for an agent implementation. It
   will specify callbacks like handle\_initialize/2, handle\_new\_session/2, and
   handle\_prompt/2.
-- @behaviour ACP.Client: Defines the contract for a client implementation, with
+- @behaviour ACPex.Client: Defines the contract for a client implementation, with
   callbacks such as handle\_session\_update/2 and handle\_read\_text\_file/2.
 
 Following Elixir conventions, all public functions that can fail will return
@@ -333,12 +333,12 @@ Elixir.17
 2. **Unexpected / Fatal Errors**: These represent programming errors or
    unrecoverable situations. This category includes malformed JSON, violations
    of the JSON-RPC or ACP specifications, or unexpected crashes within a user's
-   behaviour callback. In these cases, the ACP.Connection GenServer will follow
+   behaviour callback. In these cases, the ACPex.Connection GenServer will follow
    the "let it crash" philosophy. It will exit, and the linked supervisor will
    be responsible for handling the failure, typically by logging the error and
    restarting the process.
 
-To facilitate internal error signaling, a custom exception, ACP.ProtocolError,
+To facilitate internal error signaling, a custom exception, ACPex.ProtocolError,
 will be defined using defexception. This will be used internally to signal
 unrecoverable protocol violations that should lead to a process crash.18
 
@@ -348,7 +348,7 @@ This section provides a more detailed breakdown of the key modules that will
 constitute the ACPex library, describing their responsibilities and internal
 structure.
 
-### **4.1. ACP.Connection (The GenServer Core)**
+### **4.1. ACPex.Connection (The GenServer Core)**
 
 This module is the heart of the library, orchestrating all communication and
 state management.
@@ -359,7 +359,7 @@ state management.
   sessions: %{}
 
 - **init/1**: The init/1 callback will receive the user's handler module and
-  initial arguments. It will start the ACP.Transport.Stdio process, link to it,
+  initial arguments. It will start the ACPex.Transport.Stdio process, link to it,
   and initialize the state with the provided handler information.
 - **handle\_info({:data, binary}, state)**: This will be the primary message
   loop for incoming data. It receives a complete message binary from the
@@ -378,15 +378,15 @@ state management.
   it will store the from address in the pending\_requests map, keyed by the
   request id. When the handler's callback returns a result, the GenServer will
   construct the JSON-RPC response and send it back over the transport.
-- **Public API for Handlers**: The ACP.Connection module will also expose a set
+- **Public API for Handlers**: The ACPex.Connection will also expose a set
   of public functions intended to be called _by the user's handler module_. For
-  example, ACP.Connection.send\_notification(pid, method, params) and
-  ACP.Connection.send\_request(pid, method, params). These functions will send a
+  example, ACPex.Connection.send\_notification(pid, method, params) and
+  ACPex.Connection.send\_request(pid, method, params). These functions will send a
   message to the GenServer process, which will then serialize and send the
   message over the transport. send\_request will perform a GenServer.call and
   block until a response with the corresponding id is received.
 
-### **4.2. ACP.Transport.Stdio (The I/O Layer)**
+### **4.2. ACPex.Transport.Stdio (The I/O Layer)**
 
 Directly managing stdin and stdout in a concurrent, non-blocking fashion is a
 non-trivial task in Elixir. A naive implementation using IO.read/2 would block
@@ -398,7 +398,7 @@ type of process provided by the Erlang runtime that acts as a bridge to an
 external OS process or I/O device. It communicates with the Elixir application
 asynchronously via messages, which is ideal for this use case.
 
-The ACP.Transport.Stdio module will be responsible for:
+The ACPex.Transport.Stdio module will be responsible for:
 
 1. **Spawning and Managing the Port**: It will provide functions to start a port
    connected to the application's standard I/O streams.
@@ -412,7 +412,7 @@ The ACP.Transport.Stdio module will be responsible for:
    When sending data, it will prepend the appropriate Content-Length header to
    the JSON payload before writing it to stdout.
 
-### **4.3. ACP.Schema (Data Structures)**
+### **4.3. ACPex.Schema (Data Structures)**
 
 This module will serve as a namespace for all the Elixir struct definitions that
 map directly to the data types specified in the ACP JSON Schema.13 This provides
@@ -420,8 +420,8 @@ a single source of truth for the data shapes used throughout the library and in
 the user's code.
 
 - **Structure**: It will contain nested modules for each major type, for
-  example: ACP.Schema.InitializeRequest, ACP.Schema.ContentBlock,
-  ACP.Schema.Diff.
+  example: ACPex.Schema.InitializeRequest, ACPex.Schema.ContentBlock,
+  ACPex.Schema.Diff.
 - **Best Practices**: Each struct will:
   - Use @enforce\_keys for fields that are mandatory according to the protocol
     specification.
@@ -431,30 +431,30 @@ the user's code.
 These structs will be the primary data carriers, passed as arguments to
 behaviour callbacks and used to construct outgoing messages.
 
-### **4.4. The Behaviours: ACP.Agent and ACP.Client**
+### **4.4. The Behaviours: ACPex.Agent and ACPex.Client**
 
 These two modules will contain no concrete implementation. Their sole purpose is
 to formally define the contracts that user modules must adhere to when creating
 an agent or a client. They will consist entirely of @callback and @doc
 attributes.
 
-- **@behaviour ACP.Agent**:
-  - @callback handle\_initialize(params :: ACP.Schema.InitializeRequest.t(),
-    state :: term()) :: {:ok, ACP.Schema.InitializeResponse.t(), new\_state ::
+- **@behaviour ACPex.Agent**:
+  - @callback handle\_initialize(params :: ACPex.Schema.InitializeRequest.t(),
+    state :: term()) :: {:ok, ACPex.Schema.InitializeResponse.t(), new\_state ::
     term()}
-  - @callback handle\_new\_session(params :: ACP.Schema.NewSessionRequest.t(),
-    state :: term()) :: {:ok, ACP.Schema.NewSessionResponse.t(), new\_state ::
+  - @callback handle\_new\_session(params :: ACPex.Schema.NewSessionRequest.t(),
+    state :: term()) :: {:ok, ACPex.Schema.NewSessionResponse.t(), new\_state ::
     term()}
-  - @callback handle\_prompt(params :: ACP.Schema.PromptRequest.t(), state ::
-    term()) :: {:ok, ACP.Schema.PromptResponse.t(), new\_state :: term()}
+  - @callback handle\_prompt(params :: ACPex.Schema.PromptRequest.t(), state ::
+    term()) :: {:ok, ACPex.Schema.PromptResponse.t(), new\_state :: term()}
   - ...and so on for every other client-to-agent message.
-- **@behaviour ACP.Client**:
+- **@behaviour ACPex.Client**:
   - @callback handle\_session\_update(params ::
-    ACP.Schema.SessionNotification.t(), state :: term()) :: {:noreply,
+    ACPex.Schema.SessionNotification.t(), state :: term()) :: {:noreply,
     new\_state :: term()}
   - @callback handle\_read\_text\_file(params ::
-    ACP.Schema.ReadTextFileRequest.t(), state :: term()) :: {:ok,
-    ACP.Schema.ReadTextFileResponse.t(), new\_state :: term()}
+    ACPex.Schema.ReadTextFileRequest.t(), state :: term()) :: {:ok,
+    ACPex.Schema.ReadTextFileResponse.t(), new\_state :: term()}
   - ...and so on for every other agent-to-client message.
 
 This explicit contract enables static analysis tools to verify the correctness
@@ -487,7 +487,7 @@ downstream users.
   complexity than it solves. The core logic of JSON-RPC 2.0 is relatively
   simple: constructing and parsing messages with jsonrpc, method, params, and id
   fields, and correlating responses to requests via the id.10 This logic can be
-  implemented cleanly and efficiently directly within the ACP.Connection
+  implemented cleanly and efficiently directly within the ACPex.Connection
   GenServer. This approach provides maximum control over the transport layer,
   avoids unnecessary dependencies, and keeps the library focused and
   self-contained.
@@ -502,7 +502,7 @@ core dependencies.
 | **JSON Parsing**   | jason                   | \- High performance (speed and memory) 20                                                                        | \- Strict RFC 8259 compliance 19                                         | \- Modern community standard                                                                                                                                                                                       | \- Lacks some convenience features of poison (e.g., decoding directly to structs) 19 | **Adopt jason**. Performance and strictness are paramount for a protocol library. The lack of convenience features is irrelevant as we will be manually decoding into our own schema structs. |
 | **JSON Parsing**   | poison                  | \- Mature and widely used in older projects \- More lenient parsing                                              | \- Slower and less memory-efficient than jason 20                        | \- Less strict spec compliance 19                                                                                                                                                                                  | \- Largely superseded by jason in new projects                                       | **Reject poison**. The performance benefits of jason are too significant to ignore for a communication-heavy library.                                                                         |
 | **JSON-RPC Logic** | jsonrpc2                | \- Provides a full JSON-RPC 2.0 implementation \- Handles batching and other spec features                       | \- Designed for standard transports (HTTP/TCP), not stdio 22             | \- Introduces additional dependencies (ranch, shackle, etc.) 22                                                                                                                                                    | \- Potential for impedance mismatch with our custom transport                        | **Reject jsonrpc2**. The overhead and potential complexity of adapting it to our specific stdio transport outweigh the benefits.                                                              |
-| **JSON-RPC Logic** | In-house Implementation | \- Zero external dependencies \- Full control over transport integration \- Tailored specifically to ACP's needs | \- Requires implementing the request/response correlation logic manually | **Adopt In-house Implementation**. The core JSON-RPC logic is simple enough to implement within the ACP.Connection GenServer, avoiding dependency bloat and ensuring a perfect fit with the stdio transport layer. |                                                                                      |                                                                                                                                                                                               |
+| **JSON-RPC Logic** | In-house Implementation | \- Zero external dependencies \- Full control over transport integration \- Tailored specifically to ACP's needs | \- Requires implementing the request/response correlation logic manually | **Adopt In-house Implementation**. The core JSON-RPC logic is simple enough to implement within the ACPex.Connection GenServer, avoiding dependency bloat and ensuring a perfect fit with the stdio transport layer. |                                                                                      |                                                                                                                                                                                               |
 
 ### **5.3. Project Tooling and Best Practices**
 
@@ -539,8 +539,8 @@ correctness is paramount. The testing approach will be divided into three
 layers:
 
 1. **Unit Tests**: Each individual module will have its own set of unit tests.
-   For example, the ACP.Schema structs will be tested to ensure they are created
-   correctly, and the internal logic of the ACP.Connection GenServer for
+   For example, the ACPex.Schema structs will be tested to ensure they are created
+   correctly, and the internal logic of the ACPex.Connection GenServer for
    managing state (e.g., adding and removing pending requests) will be tested in
    isolation.
 2. **Integration Tests**: This is the most critical layer of testing. Testing
@@ -548,15 +548,15 @@ layers:
    solve this, the integration tests will use a **mock transport**. A simple
    ACP.Transport.Mock behaviour will be created, with a mock implementation that
    communicates with the test process via standard Elixir messages instead of
-   stdio. The tests will then spawn an ACP.Connection process using this mock
+   stdio. The tests will then spawn an ACPex.Connection process using this mock
    transport. This allows the test process to simulate being the "other side" of
-   the connection, sending messages to the ACP.Connection process and asserting
+   the connection, sending messages to the ACPex.Connection process and asserting
    that it receives the expected responses. This approach enables the simulation
    of a full, bidirectional client-agent conversation, verifying the entire
    message flow, serialization, and logic delegation in a fast, reliable, and
    deterministic manner.
 3. **Property-Based Testing**: The StreamData library will be used to create
-   property-based tests for the message parser in the ACP.Transport.Stdio
+   property-based tests for the message parser in the ACPex.Transport.Stdio
    module. These tests will generate thousands of variations of valid and
    malformed message frames (e.g., with incorrect Content-Length headers,
    missing newlines, or corrupted JSON) to ensure the parser is robust and does
