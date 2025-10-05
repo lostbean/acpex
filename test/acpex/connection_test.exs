@@ -19,22 +19,22 @@ defmodule ACPex.ConnectionTest do
     end
 
     def handle_fs_write_text_file(_params, state),
-      do: {:error, %{code: -32601, message: "Not implemented"}, state}
+      do: {:error, %{code: -32_601, message: "Not implemented"}, state}
 
     def handle_terminal_create(_params, state),
-      do: {:error, %{code: -32601, message: "Not implemented"}, state}
+      do: {:error, %{code: -32_601, message: "Not implemented"}, state}
 
     def handle_terminal_output(_params, state),
-      do: {:error, %{code: -32601, message: "Not implemented"}, state}
+      do: {:error, %{code: -32_601, message: "Not implemented"}, state}
 
     def handle_terminal_wait_for_exit(_params, state),
-      do: {:error, %{code: -32601, message: "Not implemented"}, state}
+      do: {:error, %{code: -32_601, message: "Not implemented"}, state}
 
     def handle_terminal_kill(_params, state),
-      do: {:error, %{code: -32601, message: "Not implemented"}, state}
+      do: {:error, %{code: -32_601, message: "Not implemented"}, state}
 
     def handle_terminal_release(_params, state),
-      do: {:error, %{code: -32601, message: "Not implemented"}, state}
+      do: {:error, %{code: -32_601, message: "Not implemented"}, state}
   end
 
   setup do

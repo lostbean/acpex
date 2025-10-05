@@ -169,49 +169,45 @@ defmodule ACPex.Connection do
   end
 
   defp parse_message(buffer) do
-    case :binary.split(buffer, "\r\n\r\n") do
+    case :binary.split(buffer, "\n\n") do
       [headers, rest] ->
-        case parse_content_length(headers) do
-          {:ok, length} when byte_size(rest) >= length ->
-            <<json::binary-size(length), remaining::binary>> = rest
-
-            case Jason.decode(json) do
-              {:ok, message} -> {:ok, message, remaining}
-              {:error, reason} -> {:error, {:invalid_json, reason}}
-            end
-
-          {:ok, _length} ->
-            {:incomplete, buffer}
-
-          :error ->
-            {:error, :invalid_headers}
-        end
+        parse_body(rest, parse_content_length(headers), buffer)
 
       [_] ->
         {:incomplete, buffer}
     end
   end
 
-  defp parse_content_length(headers) do
-    headers
-    |> String.split("\r\n")
-    |> Enum.find_value(fn line ->
-      case String.split(line, ":", parts: 2) do
-        ["Content-Length", value] ->
-          case Integer.parse(String.trim(value)) do
-            {length, _} -> {:ok, length}
-            :error -> nil
-          end
+  defp parse_body(rest, {:ok, length}, buffer) when byte_size(rest) >= length do
+    <<json::binary-size(length), remaining::binary>> = rest
 
-        _ ->
-          nil
-      end
-    end)
-    |> case do
-      nil -> :error
-      result -> result
+    case Jason.decode(json) do
+      {:ok, message} -> {:ok, message, remaining}
+      {:error, reason} -> {:error, {:invalid_json, reason}}
     end
   end
+
+  defp parse_body(_rest, {:ok, _length}, buffer), do: {:incomplete, buffer}
+  defp parse_body(_rest, :error, _buffer), do: {:error, :invalid_headers}
+
+  defp parse_content_length(headers) do
+    headers
+    |> String.split("\n")
+    |> Enum.find_value(&extract_content_length/1)
+    |> case do
+      nil -> :error
+      val -> val
+    end
+  end
+
+  defp extract_content_length("Content-Length: " <> rest) do
+    case Integer.parse(String.trim(rest)) do
+      {length, _} -> {:ok, length}
+      :error -> nil
+    end
+  end
+
+  defp extract_content_length(_other_line), do: nil
 
   defp handle_parsed_message(state, %{"jsonrpc" => "2.0", "id" => id} = message) do
     cond do
@@ -247,7 +243,7 @@ defmodule ACPex.Connection do
     if function_exported?(state.handler_module, callback, 2) do
       apply(state.handler_module, callback, [params || %{}, state.handler_state])
     else
-      {:error, %{code: -32601, message: "Method not found: #{method}"}, state.handler_state}
+      {:error, %{code: -32_601, message: "Method not found: #{method}"}, state.handler_state}
     end
   end
 
