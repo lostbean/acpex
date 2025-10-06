@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mix test:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:hexdocs.pm)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

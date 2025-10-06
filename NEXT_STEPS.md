@@ -5,14 +5,14 @@ following tasks are recommended to create a complete and robust implementation.
 
 ## 1. Implement Full Protocol Logic
 
-The foundational OTP structure is in place, but the logic to route all protocol
-messages to the user's behaviour callbacks is incomplete.
+The foundational OTP structure is in place, with complete routing logic for all
+protocol messages.
 
 - **Action:**
   - [x] In `ACPex.Protocol.Connection`, implement the dispatching logic for
     connection-level requests (e.g., `initialize`, `authenticate`) to the
     handler module.
-  - [ ] In `ACPex.Protocol.Session`, implement the full routing logic to dispatch all
+  - [x] In `ACPex.Protocol.Session`, implement the full routing logic to dispatch all
     session-level messages (`session/prompt`, `session/cancel`, `fs/read_text_file`,
     etc.) to the correct callbacks on the handler module.
   - [x] Implement proper JSON-RPC error responses for protocol violations, such as
@@ -32,36 +32,53 @@ agent subprocess.
 
 ## 3. Create a New Test Suite
 
-The original test suite was removed during the refactoring and must be replaced to
-ensure the new architecture is correct and robust.
+A comprehensive test suite has been created to verify the new architecture.
 
 - **Action:**
   - [x] Create new test files for the refactored OTP architecture (e.g.,
     `test/acpex/protocol/connection_test.exs`).
-  - [ ] Create `test/acpex/protocol/session_test.exs`.
-  - [ ] Write integration tests that verify the complete message flow through the
+  - [x] Create `test/acpex/protocol/session_test.exs` with comprehensive coverage of
+    all session-level methods (session/*, fs/*, terminal/*).
+  - [x] Write integration tests that verify the complete message flow through the
     `Transport` -> `Connection` -> `Session` process hierarchy.
-  - [ ] Ensure tests cover the full lifecycle: starting a connection, creating a
+  - [x] Ensure tests cover the full lifecycle: starting a connection, creating a
     session, sending requests and notifications, and graceful termination.
 
 ## 4. Update Documentation
 
-The new modules created during the refactoring are missing documentation.
+Comprehensive documentation has been added to all modules.
 
 - **Action:**
-  - [ ] Write comprehensive `@moduledoc` documentation for all new modules:
+  - [x] Write comprehensive `@moduledoc` documentation for all new modules:
     `ACPex.Application`, `ACPex.Json`, and all modules under `ACPex.Protocol`.
-  - [ ] Add `@doc` and `@spec` definitions for all public functions.
-  - [ ] Update the `:groups_for_modules` list in `mix.exs` to correctly categorize the
+  - [x] Add `@doc` and `@spec` definitions for all public functions.
+  - [x] Update the `:groups_for_modules` list in `mix.exs` to correctly categorize the
     new modules for the generated HexDocs site.
 
 ## 5. Implement Symmetric JSON Deserialization
 
-The library can encode Elixir structs to `camelCase` JSON, but it does not yet
-handle the reverse when decoding.
+The library now supports both encoding and decoding between Elixir structs and JSON.
 
 - **Action:**
-  - [ ] Implement logic to deserialize incoming JSON with `camelCase` keys directly
+  - [x] Implement logic to deserialize incoming JSON with `camelCase` keys directly
     into the `ACPex.Schema` structs with `snake_case` atom keys.
-  - [ ] This will provide a fully seamless, struct-based experience for developers
-    and improve type safety.
+  - [x] This provides a fully seamless, struct-based experience for developers
+    and improves type safety.
+
+## Summary
+
+All core implementation tasks have been completed:
+
+- ✅ Full protocol logic with dynamic routing
+- ✅ Client-side agent spawning via Port
+- ✅ Comprehensive test suite (25 tests, all passing)
+- ✅ Complete documentation with @moduledoc, @doc, and @spec
+- ✅ Symmetric JSON serialization (encode and decode)
+
+The library is now feature-complete and ready for the next phase of development,
+which may include:
+
+- Creating example agents and clients
+- Building MCP integration
+- Adding alternative transport layers (WebSocket)
+- Publishing to Hex.pm

@@ -59,12 +59,18 @@ defmodule ACPex.MixProject do
       main: "readme",
       extras: ["README.md", "guides/which_acp.md", "guides/getting_started.md"],
       groups_for_modules: [
-        Core: [ACPex, ACPex.Connection],
-        Behaviours: [ACPex.Client, ACPex.Agent],
-        Schema: [ACPex.Schema],
-        Transport: [ACPex.Transport.Stdio]
-      ],
-      elixirc_paths: elixirc_paths(Mix.env())
+        "Core API": [ACPex],
+        Behaviours: [ACPex.Agent, ACPex.Client],
+        Protocol: [
+          ACPex.Protocol.Connection,
+          ACPex.Protocol.ConnectionSupervisor,
+          ACPex.Protocol.Session,
+          ACPex.Protocol.SessionSupervisor
+        ],
+        "Data Types": [ACPex.Schema, ACPex.Json],
+        Transport: [ACPex.Transport.Stdio],
+        Application: [ACPex.Application]
+      ]
     ]
   end
 

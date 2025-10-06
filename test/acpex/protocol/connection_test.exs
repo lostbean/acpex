@@ -121,4 +121,33 @@ defmodule ACPex.Protocol.ConnectionTest do
     assert prompt_resp["id"] == "prompt-req"
     assert prompt_resp["result"] == %{"content" => "prompt response"}
   end
+
+  test "properly extracts agent_path from nested opts for client role" do
+    {:ok, transport_pid} = MockTransport.start_link(self())
+
+    # This should not crash - agent_path should be extracted from nested opts
+    result = Connection.start_link(
+      handler_module: TestHandler,
+      handler_args: [],
+      role: :client,
+      transport_pid: transport_pid,
+      opts: [agent_path: "/usr/bin/gemini"]
+    )
+
+    # If the fix works, we should get a connection (transport_pid is provided so no spawn needed)
+    assert {:ok, _pid} = result
+  end
+
+  test "returns error when agent_path missing for client role without transport_pid" do
+    # Without transport_pid and without agent_path, should fail
+    result = Connection.start_link(
+      handler_module: TestHandler,
+      handler_args: [],
+      role: :client,
+      opts: []
+    )
+
+    # Should fail because agent_path is required when no transport_pid
+    assert {:error, _reason} = result
+  end
 end

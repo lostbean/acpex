@@ -1,6 +1,50 @@
 defmodule ACPex.Protocol.Session do
   @moduledoc """
-  The workhorse GenServer that manages the state for a single conversation session.
+  GenServer that manages the state for a single conversation session.
+
+  A session represents a stateful conversation between a user and an AI agent.
+  Each session has a unique `session_id` and maintains its own isolated state.
+  The Session module is the workhorse of the ACP implementation, responsible for:
+
+  - Handling all session-level messages (`session/prompt`, `session/cancel`, etc.)
+  - Routing filesystem requests (`fs/read_text_file`, `fs/write_text_file`)
+  - Routing terminal requests (`terminal/*`)
+  - Dispatching messages to the appropriate handler callbacks
+  - Managing the session's lifecycle and state
+
+  ## Message Routing
+
+  The Session module uses a dynamic routing mechanism that converts JSON-RPC
+  method names to handler callback atoms:
+
+      "session/prompt" -> :handle_session_prompt
+      "fs/read_text_file" -> :handle_fs_read_text_file
+      "terminal/create" -> :handle_terminal_create
+
+  ## State Management
+
+  Each session maintains:
+  - A reference to the handler module (implementing `ACPex.Agent` or `ACPex.Client`)
+  - The handler's custom state (opaque to the Session module)
+  - The session's unique ID
+  - References to the connection and transport processes
+
+  ## Lifecycle
+
+  1. Session is created when `session/new` is received
+  2. Session generates a unique `session_id`
+  3. Session registers itself with the Connection
+  4. Session processes messages until the connection closes or the session is terminated
+
+  ## Examples
+
+      # Sessions are typically started by the SessionSupervisor
+      {:ok, session_pid} = Session.start_link(%{
+        handler_module: MyAgent,
+        initial_handler_state: %{},
+        transport_pid: transport_pid
+      })
+
   """
   use GenServer
   require Logger
@@ -13,6 +57,17 @@ defmodule ACPex.Protocol.Session do
 
   # Public API
 
+  @doc """
+  Starts a new Session GenServer.
+
+  ## Options (as a map)
+
+    * `:handler_module` - The module implementing `ACPex.Agent` or `ACPex.Client`
+    * `:initial_handler_state` - Initial state for the handler
+    * `:transport_pid` - PID of the transport process
+
+  """
+  @spec start_link(map()) :: GenServer.on_start()
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts)
   end

@@ -2,8 +2,54 @@ defmodule ACPex.Protocol.Connection do
   @moduledoc """
   GenServer that manages the state for a single agent-client connection.
 
-  It handles the initial `initialize` and `authenticate` messages and is
-  responsible for starting its own `SessionSupervisor`.
+  The Connection module is a core component in the ACPex OTP architecture,
+  sitting between the transport layer and individual session processes. It is
+  responsible for:
+
+  - Handling connection-level protocol messages (`initialize`, `authenticate`)
+  - Managing the lifecycle of session processes via a `SessionSupervisor`
+  - Routing messages to the appropriate session based on `session_id`
+  - Handling bidirectional JSON-RPC communication
+  - Managing pending requests and matching responses
+
+  ## Architecture
+
+  Each connection spawns its own supervision tree:
+
+      Connection.GenServer
+      ├── SessionSupervisor
+      │   ├── Session.GenServer (session_id_1)
+      │   ├── Session.GenServer (session_id_2)
+      │   └── ...
+
+  ## Message Flow
+
+  1. **Incoming messages** arrive via `{:message, json_rpc_message}`
+  2. **Connection-level messages** are handled directly by calling the handler module
+  3. **Session-level messages** are forwarded to the appropriate session process
+  4. **Responses** are matched with pending requests via their `id` field
+
+  ## Examples
+
+      # Start an agent connection
+      {:ok, pid} = Connection.start_link(
+        handler_module: MyAgent,
+        handler_args: [],
+        role: :agent,
+        transport_pid: transport_pid
+      )
+
+      # Send a notification to the other party
+      Connection.send_notification(pid, "session/update", %{
+        "session_id" => "abc123",
+        "update" => %{"kind" => "message", "content" => "Hello"}
+      })
+
+      # Send a request and await response
+      response = Connection.send_request(pid, "fs/read_text_file", %{
+        "path" => "/tmp/file.txt"
+      })
+
   """
   use GenServer
   require Logger
@@ -23,15 +69,64 @@ defmodule ACPex.Protocol.Connection do
 
   # Public API
 
+  @doc """
+  Starts a new Connection GenServer.
+
+  ## Options
+
+    * `:handler_module` - The module implementing either `ACPex.Agent` or `ACPex.Client`
+    * `:handler_args` - Arguments passed to the handler's `init/1` callback
+    * `:role` - Either `:agent` or `:client`
+    * `:transport_pid` - (optional) PID of an existing transport process
+    * `:opts` - Additional GenServer options (e.g., `:name`)
+
+  """
+  @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
-    {gen_opts, _init_opts} = Keyword.split(opts[:opts] || [], [:name])
-    GenServer.start_link(__MODULE__, Keyword.delete(opts, :opts), gen_opts)
+    # Extract nested options for GenServer and transport configuration
+    nested_opts = opts[:opts] || []
+    {gen_opts, init_opts} = Keyword.split(nested_opts, [:name])
+
+    # Merge init_opts (like :agent_path) back into main opts, then remove :opts key
+    merged_opts = opts
+                  |> Keyword.delete(:opts)
+                  |> Keyword.merge(init_opts)
+
+    GenServer.start_link(__MODULE__, merged_opts, gen_opts)
   end
 
+  @doc """
+  Sends a JSON-RPC notification (one-way message) to the other party.
+
+  Notifications do not have an `id` field and do not expect a response.
+
+  ## Examples
+
+      Connection.send_notification(conn, "session/update", %{
+        "session_id" => "abc",
+        "update" => %{"kind" => "thought", "content" => "Thinking..."}
+      })
+
+  """
+  @spec send_notification(pid(), String.t(), map()) :: :ok
   def send_notification(pid, method, params) do
     GenServer.cast(pid, {:send_notification, method, params})
   end
 
+  @doc """
+  Sends a JSON-RPC request and asynchronously waits for the response.
+
+  The request will have an `id` field and expects a response. This function
+  blocks until the response is received or the timeout expires.
+
+  ## Examples
+
+      response = Connection.send_request(conn, "fs/read_text_file", %{
+        "path" => "/etc/hosts"
+      }, 10_000)
+
+  """
+  @spec send_request(pid(), String.t(), map(), timeout()) :: map()
   def send_request(pid, method, params, timeout \\ 5000) do
     GenServer.call(pid, {:send_request, method, params}, timeout)
   end
@@ -123,7 +218,7 @@ defmodule ACPex.Protocol.Connection do
   defp start_managed_transport(:client, opts) do
     transport_module = Keyword.get(opts, :transport, Stdio)
 
-    case Keyword.get(opts[:opts], :agent_path) do
+    case Keyword.get(opts, :agent_path) do
       nil ->
         {:error, "agent_path must be provided for client role"}
 
