@@ -1,4 +1,4 @@
-# Control Gemini CLI from Livebook
+# Control Claude Code ACP from Livebook
 
 ```elixir
 Mix.install([
@@ -10,11 +10,11 @@ Mix.install([
 
 ## 🚀 Introduction
 
-Welcome to an **interactive demonstration** of ACPex controlling Google's Gemini CLI agent!
+Welcome to an **interactive demonstration** of ACPex controlling Claude Code ACP agent!
 
 In this livebook, you'll build a complete AI coding assistant interface that:
 
-* 🤖 Connects to **Gemini CLI** via the Agent Client Protocol (ACP)
+* 🤖 Connects to **Claude Code ACP** via the Agent Client Protocol (ACP)
 * 💬 Sends prompts and receives intelligent responses
 * 📁 Allows the agent to **read and write files** on your system
 * 🖥️ Enables the agent to **execute terminal commands**
@@ -26,62 +26,46 @@ This is a **real, working implementation** - not a simulation! You'll be control
 
 Before running this livebook, ensure you have:
 
-### 1. Gemini CLI Installed
-
-Choose one of these methods:
+### 1. Claude Code ACP Installed
 
 **Option A: NPM (Node.js 20+)**
 
 ```bash
-npm install -g @google/gemini-cli
-```
-
-**Option B: Homebrew (macOS/Linux)**
-
-```bash
-brew install gemini-cli
-```
-
-**Option C: One-time run with npx**
-
-```bash
-npx @google/gemini-cli
+npm install -g @zed-industries/claude-code-acp
 ```
 
 ### 2. Authentication
 
-Gemini CLI requires authentication. The easiest way is:
+Claude Code ACP requires an Anthropic API key. Set the `ANTHROPIC_API_KEY` environment variable:
 
 ```bash
-gemini auth login
+export ANTHROPIC_API_KEY="your-api-key-here"
 ```
 
-Alternatively, set the `GEMINI_API_KEY` environment variable:
-
-```bash
-export GEMINI_API_KEY="your-api-key-here"
-```
-
-Get your API key from: https://aistudio.google.com/apikey
+Get your API key from: https://console.anthropic.com/settings/keys
 
 ### 3. Verify Installation
 
-Check that Gemini CLI is available:
+Check that Claude Code ACP is available:
 
 ```elixir
-gemini_path = System.find_executable("/Users/edgar/.npm-global/bin/gemini")
+claude_code_acp_path = "/Users/edgar/.npm-global/bin/claude-code-acp"
+```
 
-if gemini_path do
+```elixir
+claude_acp_path = System.find_executable(claude_code_acp_path)
+
+if claude_acp_path do
   Kino.Markdown.new("""
-  ✅ **Gemini CLI found!**
+  ✅ **Claude Code ACP found!**
 
-  Path: `#{gemini_path}`
+  Path: `#{claude_acp_path}`
   """)
 else
   Kino.Markdown.new("""
-  ❌ **Gemini CLI not found!**
+  ❌ **Claude Code ACP not found!**
 
-  Please install it using one of the methods above, then restart the runtime.
+  Please install it using the NPM command above, then restart the runtime.
   """)
 end
 ```
@@ -116,10 +100,11 @@ defmodule UI do
         Kino.Input.select(
           "Model",
           [
-            {"gemini-2.5-pro", "Gemini 2.5 Pro (Most Capable)"},
-            {"gemini-2.5-flash", "Gemini 2.5 Flash (Faster)"}
+            {"claude-opus-4", "Claude Opus 4 (Most Capable)"},
+            {"claude-sonnet-4", "Claude Sonnet 4 (Balanced)"},
+            {"claude-haiku-4", "Claude Haiku 4 (Fastest)"}
           ],
-          default: "gemini-2.5-flash"
+          default: "claude-sonnet-4"
         ),
 
       # Action buttons
@@ -133,7 +118,7 @@ defmodule UI do
     Kino.Layout.grid(
       [
         # Header
-        Kino.Markdown.new("## 🤖 Gemini CLI Agent Controller"),
+        Kino.Markdown.new("## 🤖 Claude Code ACP Agent Controller"),
 
         # Status Section
         Kino.Layout.grid([
@@ -285,14 +270,14 @@ UI.update_status(ui.status_frame, :disconnected, :red)
 dashboard
 ````
 
-### 🔌 Implementing the ACPex Client
+#### 🔌 Implementing the ACPex Client
 
 Now let's create a full-featured client that implements all ACP callbacks:
 
 ```elixir
-defmodule GeminiClient do
+defmodule ClaudeClient do
   @moduledoc """
-  A complete ACPex client implementation for controlling Gemini CLI.
+  A complete ACPex client implementation for controlling Claude Code ACP.
 
   This client handles:
   - Session updates and streams them to the UI
@@ -487,15 +472,15 @@ end
 
 ### 🚀 Starting the Agent Connection
 
-Now let's connect to Gemini CLI! This cell will:
+Now let's connect to Claude Code ACP! This cell will:
 
-1. Find the Gemini CLI executable
+1. Find the Claude Code ACP executable
 2. Start the ACPex client connection
-3. Spawn Gemini CLI as a subprocess with `--experimental-acp` flag
+3. Spawn Claude Code ACP as a subprocess
 
 <!-- livebook:{"break_markdown":true} -->
 
-⚠️ **Note:** Make sure you've authenticated with Gemini CLI first (`gemini auth login`)
+⚠️ **Note:** Make sure you've set your `ANTHROPIC_API_KEY` environment variable first
 
 ```elixir
 # Store the connection in the process dictionary so we can access it later
@@ -508,17 +493,16 @@ if agent_connection && Process.alive?(agent_connection) do
   Click the 🛑 Stop Agent button below to stop it first.
   """)
 else
-  # Find Gemini CLI
-  gemini_path = System.find_executable("/Users/edgar/.npm-global/bin/gemini")
+  # Find Claude Code ACP
+  claude_acp_path = System.find_executable(claude_code_acp_path)
 
-  if gemini_path do
-    # Start the agent with --experimental-acp flag for Gemini CLI
+  if claude_acp_path do
+    # Start the agent
     result =
       ACPex.start_client(
-        GeminiClient,
+        ClaudeClient,
         [ui: ui],
-        agent_path: gemini_path,
-        agent_args: ["--experimental-acp"]
+        agent_path: claude_acp_path
       )
 
     case result do
@@ -532,10 +516,9 @@ else
         Kino.Markdown.new("""
         ✅ **Agent Connected!**
 
-        Gemini CLI is now running and ready to receive prompts.
+        Claude Code ACP is now running and ready to receive prompts.
 
-        The agent is running with `--experimental-acp` flag at:
-        `#{gemini_path}`
+        Agent path: `#{claude_acp_path}`
         """)
 
       {:error, reason} ->
@@ -546,14 +529,14 @@ else
 
         Error: #{inspect(reason)}
 
-        Make sure Gemini CLI is properly installed and you're authenticated.
+        Make sure Claude Code ACP is properly installed and `ANTHROPIC_API_KEY` is set.
         """)
     end
   else
     UI.update_status(ui.status_frame, :error, :red)
 
     Kino.Markdown.new("""
-    ❌ **Gemini CLI not found!**
+    ❌ **Claude Code ACP not found!**
 
     Please install it and restart the runtime.
     """)
@@ -575,12 +558,12 @@ if agent_connection && Process.alive?(agent_connection) do
       agent_connection,
       "initialize",
       %{
-        "protocol_version" => "1.0",
+        "protocolVersion" => 1,
         "capabilities" => %{
           "filesystem" => true,
           "terminal" => true
         },
-        "client_info" => %{
+        "clientInfo" => %{
           "name" => "Livebook",
           "version" => "0.1.0"
         }
@@ -591,19 +574,23 @@ if agent_connection && Process.alive?(agent_connection) do
 
   case init_response do
     %{"result" => result} ->
+      protocol_version = result["protocolVersion"] || result["protocol_version"]
+      agent_info = result["agentInfo"] || result["agent_info"]
+      capabilities = result["agentCapabilities"] || result["capabilities"]
+
       Kino.Markdown.new("""
       ✅ **Agent Initialized!**
 
-      **Protocol Version:** #{result["protocol_version"]}
+      **Protocol Version:** #{protocol_version}
 
       **Agent Info:**
       ```json
-      #{Jason.encode!(result["agent_info"] || %{}, pretty: true)}
+      #{Jason.encode!(agent_info || %{}, pretty: true)}
       ```
 
       **Capabilities:**
       ```json
-      #{Jason.encode!(result["capabilities"] || %{}, pretty: true)}
+      #{Jason.encode!(capabilities || %{}, pretty: true)}
       ```
       """)
 
@@ -643,12 +630,17 @@ if agent_connection && Process.alive?(agent_connection) do
     ACPex.Protocol.Connection.send_request(
       agent_connection,
       "session/new",
-      %{},
-      10_000
+      %{
+        "cwd" => File.cwd!(),
+        "mcpServers" => []
+      },
+      30_000
     )
 
   case session_response do
-    %{"result" => %{"session_id" => session_id}} ->
+    %{"result" => result} ->
+      # Get session ID (accept both camelCase and snake_case)
+      session_id = result["sessionId"] || result["session_id"]
       # Store session ID for later
       Process.put(:current_session_id, session_id)
 
@@ -717,11 +709,13 @@ Kino.listen(send_stream, fn _event ->
             agent_connection,
             "session/prompt",
             %{
-              "session_id" => session_id,
-              "content" => prompt_text,
-              "context" => %{
-                "cwd" => File.cwd!()
-              }
+              "sessionId" => session_id,
+              "prompt" => [
+                %{
+                  "type" => "text",
+                  "text" => prompt_text
+                }
+              ]
             },
             # 2 minute timeout
             120_000
@@ -729,9 +723,10 @@ Kino.listen(send_stream, fn _event ->
 
         case response do
           %{"result" => result} ->
+            stop_reason = result["stopReason"] || result["stop_reason"]
             UI.render_agent_update(ui.output_frame, %{
               "kind" => "message",
-              "content" => "✅ **Complete!**\n\nStop Reason: #{result["stop_reason"]}"
+              "content" => "✅ **Complete!**\n\nStop Reason: #{stop_reason}"
             })
 
           %{"error" => error} ->
@@ -850,7 +845,7 @@ Congratulations! You've built a complete, working integration between:
 * **Livebook** - Your interactive notebook environment
 * **Kino** - Beautiful, reactive UI components
 * **ACPex** - Your Elixir ACP protocol implementation
-* **Gemini CLI** - Google's powerful AI coding assistant
+* **Claude Code ACP** - Anthropic's powerful AI coding assistant
 
 <!-- livebook:{"break_markdown":true} -->
 
@@ -866,7 +861,7 @@ Congratulations! You've built a complete, working integration between:
 
 #### Next Steps
 
-* Experiment with different prompts and see what Gemini can do
+* Experiment with different prompts and see what Claude can do
 * Try implementing additional ACP features (like session persistence)
 * Build your own custom agent using ACPex
 * Create a web interface using Phoenix LiveView
@@ -878,7 +873,7 @@ Congratulations! You've built a complete, working integration between:
 
 * **ACPex Documentation**: Check out the HexDocs for ACPex
 * **ACP Specification**: https://agentclientprotocol.com
-* **Gemini CLI**: https://github.com/google-gemini/gemini-cli
+* **Claude Code ACP**: https://github.com/zed-industries/claude-code-acp
 * **Kino Documentation**: https://hexdocs.pm/kino
 
 ---
