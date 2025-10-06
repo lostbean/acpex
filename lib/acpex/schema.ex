@@ -7,6 +7,7 @@ defmodule ACPex.Schema do
 
   defmodule InitializeRequest do
     @moduledoc "Request sent by client to initialize the connection"
+    use ACPex.Json
     @enforce_keys [:protocol_version, :capabilities]
     defstruct [:protocol_version, :capabilities, :client_info]
 
@@ -19,6 +20,7 @@ defmodule ACPex.Schema do
 
   defmodule InitializeResponse do
     @moduledoc "Response from agent with its capabilities"
+    use ACPex.Json
     @enforce_keys [:protocol_version, :capabilities]
     defstruct [:protocol_version, :capabilities, :agent_info]
 
@@ -31,6 +33,7 @@ defmodule ACPex.Schema do
 
   defmodule NewSessionRequest do
     @moduledoc "Request to create a new conversation session"
+    use ACPex.Json
     defstruct [:session_id]
 
     @type t :: %__MODULE__{
@@ -40,6 +43,7 @@ defmodule ACPex.Schema do
 
   defmodule NewSessionResponse do
     @moduledoc "Response with the created session ID"
+    use ACPex.Json
     @enforce_keys [:session_id]
     defstruct [:session_id]
 
@@ -50,6 +54,7 @@ defmodule ACPex.Schema do
 
   defmodule PromptRequest do
     @moduledoc "User prompt sent to the agent"
+    use ACPex.Json
     @enforce_keys [:session_id, :prompt]
     defstruct [:session_id, :prompt, :context]
 
@@ -62,6 +67,7 @@ defmodule ACPex.Schema do
 
   defmodule PromptResponse do
     @moduledoc "Acknowledgment that prompt processing has begun"
+    use ACPex.Json
     defstruct []
 
     @type t :: %__MODULE__{}
@@ -69,6 +75,7 @@ defmodule ACPex.Schema do
 
   defmodule SessionUpdate do
     @moduledoc "Streaming update notification from agent"
+    use ACPex.Json
     @enforce_keys [:session_id, :update]
     defstruct [:session_id, :update]
 
@@ -80,6 +87,7 @@ defmodule ACPex.Schema do
 
   defmodule ReadTextFileRequest do
     @moduledoc "Agent request to read a file"
+    use ACPex.Json
     @enforce_keys [:path]
     defstruct [:path]
 
@@ -90,6 +98,7 @@ defmodule ACPex.Schema do
 
   defmodule ReadTextFileResponse do
     @moduledoc "File contents response"
+    use ACPex.Json
     @enforce_keys [:content]
     defstruct [:content]
 
@@ -100,6 +109,7 @@ defmodule ACPex.Schema do
 
   defmodule WriteTextFileRequest do
     @moduledoc "Agent request to write a file"
+    use ACPex.Json
     @enforce_keys [:path, :content]
     defstruct [:path, :content]
 
@@ -111,6 +121,7 @@ defmodule ACPex.Schema do
 
   defmodule WriteTextFileResponse do
     @moduledoc "Confirmation of file write"
+    use ACPex.Json
     defstruct []
 
     @type t :: %__MODULE__{}

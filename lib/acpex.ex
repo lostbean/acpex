@@ -57,7 +57,7 @@ defmodule ACPex do
 
   """
 
-  alias ACPex.Connection
+  alias ACPex.Protocol.ConnectionSupervisor
 
   @type start_option :: {:name, atom()} | {:agent_path, String.t()}
   @type start_result :: {:ok, pid()} | {:error, term()}
@@ -80,10 +80,9 @@ defmodule ACPex do
       )
 
   """
-
   @spec start_client(module(), term(), [start_option()]) :: start_result()
   def start_client(client_module, init_args, opts \\ []) do
-    Connection.start_link(
+    ConnectionSupervisor.start_connection(
       handler_module: client_module,
       handler_args: init_args,
       role: :client,
@@ -103,7 +102,7 @@ defmodule ACPex do
   """
   @spec start_agent(module(), term(), [start_option()]) :: start_result()
   def start_agent(agent_module, init_args, opts \\ []) do
-    Connection.start_link(
+    ConnectionSupervisor.start_connection(
       handler_module: agent_module,
       handler_args: init_args,
       role: :agent,

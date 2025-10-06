@@ -1,71 +1,66 @@
 # Next Steps for ACPex Development
 
-Based on a review against the `docs/design.md` architectural document, the
-following tasks are recommended to bring the implementation to full compliance
-with the design and the Agent Client Protocol specification.
+Based on the recent architectural refactoring to align with `docs/design.md`, the
+following tasks are recommended to create a complete and robust implementation.
 
-## 1. Complete the Protocol Schema and Behaviours
+## 1. Implement Full Protocol Logic
 
-The current implementation only covers a subset of the ACP specification. The
-remaining methods and data structures need to be added.
-
-- **Action:**
-  - In `lib/acpex/schema.ex`, add struct definitions for all missing
-    request/response types, including:
-    - `AuthenticateRequest` / `AuthenticateResponse`
-    - `LoadSessionRequest` / `LoadSessionResponse`
-    - `CancelNotification`
-    - All `terminal/*` request and response types (`CreateTerminalRequest`,
-      etc.).
-    - Detailed `session/update` content blocks (`AgentMessageChunk`, `ToolCall`,
-      `PlanUpdate`, etc.).
-  - In `lib/acpex/agent.ex` and `lib/acpex/client.ex`, add the corresponding
-    `@callback` definitions for the new methods (e.g., `handle_load_session`,
-    `handle_terminal_create`).
-
-## 2. Refine Behaviour Typespecs
-
-The behaviour callbacks currently use a generic `map()` for parameters, which is
-less precise than specified in the design. This weakens static analysis
-capabilities.
+The foundational OTP structure is in place, but the logic to route all protocol
+messages to the user's behaviour callbacks is incomplete.
 
 - **Action:**
-  - Update the `@callback` definitions in `lib/acpex/agent.ex` and
-    `lib/acpex/client.ex` to use the specific struct types from `ACPex.Schema`.
-  - For example, change:
-    ```elixir
-    @callback handle_initialize(params(), state()) :: {:ok, response(), state()}
-    ```
-    to:
-    ```elixir
-    @callback handle_initialize(params :: ACPex.Schema.InitializeRequest.t(), state :: term()) :: {:ok, ACPex.Schema.InitializeResponse.t(), new_state :: term()}
-    ```
-  - This will improve static analysis and provide better documentation and
-    compile-time guarantees for developers.
+  - In `ACPex.Protocol.Connection`, implement the dispatching logic for
+    connection-level requests (e.g., `initialize`, `authenticate`) to the
+    handler module.
+  - In `ACPex.Protocol.Session`, implement the full routing logic to dispatch all
+    session-level messages (`session/prompt`, `session/cancel`, `fs/read_text_file`,
+    etc.) to the correct callbacks on the handler module.
+  - Implement proper JSON-RPC error responses for protocol violations, such as
+    requests for an unknown `session_id` or calls to an unsupported method.
 
-## 3. Implement "Let It Crash" Error Handling
+## 2. Implement Client-Side Agent Spawning
 
-The current error handling for protocol parsing is more lenient than the robust
-"let it crash" philosophy outlined in the design document.
+The library does not yet support the client role correctly, as it cannot spawn an
+agent subprocess.
 
 - **Action:**
-  - Define a custom exception, `defexception ACPex.ProtocolError`, as suggested
-    in the design.
-  - Modify the message parsing logic in `lib/acpex/connection.ex` to raise this
-    exception when unrecoverable errors occur (e.g., invalid headers, malformed
-    JSON).
-  - This ensures the `Connection` GenServer crashes on protocol violations,
-    allowing a supervisor to restart it in a clean state, leading to a more
-    resilient system.
+  - Modify the transport layer or connection process to handle the `:client` role.
+  - When `start_client` is called, the library must spawn the agent executable as
+    an external OS process.
+  - The Erlang `Port` must be connected to the `stdin` and `stdout` of the newly
+    spawned agent process, not the client's own stdio.
 
-## 4. Add Property-Based Testing
+## 3. Create a New Test Suite
 
-The design calls for property-based tests to ensure the message parser is
-robust, but these are currently missing.
+The original test suite was removed during the refactoring and must be replaced to
+ensure the new architecture is correct and robust.
 
 - **Action:**
-  - Add `stream_data` as a `:test` dependency in `mix.exs`.
-  - Create a new test file (e.g., `test/acpex/parser_property_test.exs`).
-  - Write property tests that generate a wide variety of valid and malformed
-    message frames to feed into the parser, asserting that it correctly handles
-    them or fails predictably.
+  - Create new test files for the refactored OTP architecture (e.g.,
+    `test/acpex/protocol/connection_test.exs` and `session_test.exs`).
+  - Write integration tests that verify the complete message flow through the
+    `Transport` -> `Connection` -> `Session` process hierarchy.
+  - Ensure tests cover the full lifecycle: starting a connection, creating a
+    session, sending requests and notifications, and graceful termination.
+
+## 4. Update Documentation
+
+The new modules created during the refactoring are missing documentation.
+
+- **Action:**
+  - Write comprehensive `@moduledoc` documentation for all new modules:
+    `ACPex.Application`, `ACPex.Json`, and all modules under `ACPex.Protocol`.
+  - Add `@doc` and `@spec` definitions for all public functions.
+  - Update the `:groups_for_modules` list in `mix.exs` to correctly categorize the
+    new modules for the generated HexDocs site.
+
+## 5. Implement Symmetric JSON Deserialization
+
+The library can encode Elixir structs to `camelCase` JSON, but it does not yet
+handle the reverse when decoding.
+
+- **Action:**
+  - Implement logic to deserialize incoming JSON with `camelCase` keys directly
+    into the `ACPex.Schema` structs with `snake_case` atom keys.
+  - This will provide a fully seamless, struct-based experience for developers
+    and improve type safety.

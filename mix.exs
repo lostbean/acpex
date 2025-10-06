@@ -22,6 +22,7 @@ defmodule ACPex.MixProject do
 
   def application do
     [
+      mod: {ACPex.Application, []},
       extra_applications: [:logger]
     ]
   end
@@ -29,6 +30,7 @@ defmodule ACPex.MixProject do
   defp deps do
     [
       {:jason, "~> 1.4"},
+      {:inflex, "~> 2.0"},
       {:ex_doc, "~> 0.30", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev], runtime: false}
