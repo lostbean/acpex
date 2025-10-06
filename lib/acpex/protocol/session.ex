@@ -8,7 +8,8 @@ defmodule ACPex.Protocol.Session do
   defstruct handler_module: nil,
             handler_state: nil,
             session_id: nil,
-            connection_pid: nil
+            connection_pid: nil,
+            transport_pid: nil
 
   # Public API
 
@@ -19,13 +20,15 @@ defmodule ACPex.Protocol.Session do
   # GenServer Callbacks
 
   @impl true
-  def init(opts) do
-    handler_module = Keyword.fetch!(opts, :handler_module)
-    initial_handler_state = Keyword.fetch!(opts, :initial_handler_state)
-
+  def init(%{
+        handler_module: handler_module,
+        initial_handler_state: initial_handler_state,
+        transport_pid: transport_pid
+      }) do
     state = %__MODULE__{
       handler_module: handler_module,
       handler_state: initial_handler_state,
+      transport_pid: transport_pid,
       session_id: Base.encode16(:crypto.strong_rand_bytes(16), case: :lower)
     }
 
@@ -44,13 +47,13 @@ defmodule ACPex.Protocol.Session do
         response =
           build_response(request["id"], Map.put(response_params, "session_id", state.session_id))
 
-        send(connection_pid, {:send_message, response})
+        send_message(state.transport_pid, response)
 
         {:noreply, %{state | handler_state: new_handler_state, connection_pid: connection_pid}}
 
       {:error, error, new_handler_state} ->
         response = build_error_response(request["id"], error)
-        send(connection_pid, {:send_message, response})
+        send_message(state.transport_pid, response)
         {:noreply, %{state | handler_state: new_handler_state, connection_pid: connection_pid}}
     end
   end
@@ -64,12 +67,12 @@ defmodule ACPex.Protocol.Session do
       case apply(state.handler_module, callback, [params, state.handler_state]) do
         {:ok, result, new_handler_state} ->
           response = build_response(id, result)
-          send(state.connection_pid, {:send_message, response})
+          send_message(state.transport_pid, response)
           {:noreply, %{state | handler_state: new_handler_state}}
 
         {:error, error, new_handler_state} ->
           response = build_error_response(id, error)
-          send(state.connection_pid, {:send_message, response})
+          send_message(state.transport_pid, response)
           {:noreply, %{state | handler_state: new_handler_state}}
 
         {:noreply, new_handler_state} ->
@@ -81,7 +84,7 @@ defmodule ACPex.Protocol.Session do
       response =
         build_error_response(id, %{code: -32_601, message: "Method not found: #{method}"})
 
-      send(state.connection_pid, {:send_message, response})
+      send_message(state.transport_pid, response)
       {:noreply, state}
     end
   end
@@ -123,5 +126,9 @@ defmodule ACPex.Protocol.Session do
       "id" => id,
       "error" => error
     }
+  end
+
+  defp send_message(transport_pid, message) do
+    send(transport_pid, {:send_message, message})
   end
 end

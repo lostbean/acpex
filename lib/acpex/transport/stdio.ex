@@ -9,14 +9,15 @@ defmodule ACPex.Transport.Stdio do
             parent: nil,
             buffer: ""
 
-  def start_link(parent) do
-    GenServer.start_link(__MODULE__, parent)
+  def start_link(parent, opts \\ []) do
+    GenServer.start_link(__MODULE__, {parent, opts})
   end
 
   @impl true
-  def init(parent) do
-    port = Port.open({:fd, 0, 1}, [:binary, :eof])
-    {:ok, %__MODULE__{port: port, parent: parent}})
+  def init({parent, opts}) do
+    port_opts = Keyword.get(opts, :port_opts, {:fd, 0, 1})
+    port = Port.open(port_opts, [:binary, :eof])
+    {:ok, %__MODULE__{port: port, parent: parent}}
   end
 
   @impl true

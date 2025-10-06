@@ -46,18 +46,19 @@ defmodule ACPex.Protocol.Connection do
 
     case handler_module.init(handler_args) do
       {:ok, handler_state} ->
-        transport_pid = start_transport(opts)
-        {:ok, session_sup} = SessionSupervisor.start_link(handler_module: handler_module)
+        with {:ok, transport_pid} <- start_transport(role, opts) do
+          {:ok, session_sup} = SessionSupervisor.start_link(handler_module: handler_module)
 
-        state = %__MODULE__{
-          handler_module: handler_module,
-          handler_state: handler_state,
-          role: role,
-          transport_pid: transport_pid,
-          session_sup: session_sup
-        }
+          state = %__MODULE__{
+            handler_module: handler_module,
+            handler_state: handler_state,
+            role: role,
+            transport_pid: transport_pid,
+            session_sup: session_sup
+          }
 
-        {:ok, state}
+          {:ok, state}
+        end
 
       {:error, reason} ->
         {:stop, reason}
@@ -106,25 +107,48 @@ defmodule ACPex.Protocol.Connection do
 
   # Private Helpers
 
-  defp start_transport(opts) do
-    if given_pid = opts[:transport_pid] do
-      given_pid
+  defp start_transport(role, opts) do
+    if transport_pid = opts[:transport_pid] do
+      {:ok, transport_pid}
     else
-      transport_module = Keyword.get(opts, :transport, Stdio)
-      {:ok, pid} = transport_module.start_link(self())
-      pid
+      start_managed_transport(role, opts)
+    end
+  end
+
+  defp start_managed_transport(:agent, opts) do
+    transport_module = Keyword.get(opts, :transport, Stdio)
+    transport_module.start_link(self())
+  end
+
+  defp start_managed_transport(:client, opts) do
+    transport_module = Keyword.get(opts, :transport, Stdio)
+
+    case Keyword.get(opts[:opts], :agent_path) do
+      nil ->
+        {:error, "agent_path must be provided for client role"}
+
+      path ->
+        transport_opts = [port_opts: {:spawn_executable, path}]
+        transport_module.start_link(self(), transport_opts)
     end
   end
 
   defp handle_incoming_message(%{"method" => "session/new"} = msg, state) do
-    case SessionSupervisor.start_session(state.session_sup, state.handler_state) do
+    case SessionSupervisor.start_session(
+           state.session_sup,
+           state.handler_module,
+           state.handler_state,
+           state.transport_pid
+         ) do
       {:ok, session_pid} ->
         send(session_pid, {:request, self(), msg})
         {:noreply, state}
 
       {:error, reason} ->
         Logger.error("Failed to start session: #{inspect(reason)}")
-        # TODO: Send error response
+        error = %{code: -32000, message: "Failed to start session"}
+        response = build_error_response(msg["id"], error)
+        send_message(state.transport_pid, response)
         {:noreply, state}
     end
   end
@@ -133,7 +157,9 @@ defmodule ACPex.Protocol.Connection do
     case Map.get(state.sessions, session_id) do
       nil ->
         Logger.error("Received message for unknown session_id: #{session_id}")
-        # TODO: Send error response
+        error = %{code: -32001, message: "Unknown session_id: #{session_id}"}
+        response = build_error_response(msg["id"], error)
+        send_message(state.transport_pid, response)
         {:noreply, state}
 
       session_pid ->
@@ -151,22 +177,44 @@ defmodule ACPex.Protocol.Connection do
   end
 
   # Fallback for connection-level requests (initialize, etc.)
-  defp handle_incoming_message(msg, state) do
-    Logger.debug("Connection-level message: #{inspect(msg)}")
-    # TODO: Dispatch to handler_module
-    {:noreply, state}
+  defp handle_incoming_message(%{"id" => id, "method" => method, "params" => params}, state) do
+    callback = method_to_callback(method)
+
+    if function_exported?(state.handler_module, callback, 2) do
+      case apply(state.handler_module, callback, [params, state.handler_state]) do
+        {:ok, result, new_handler_state} ->
+          response = build_response(id, result)
+          send_message(state.transport_pid, response)
+          {:noreply, %{state | handler_state: new_handler_state}}
+
+        {:error, error, new_handler_state} ->
+          response = build_error_response(id, error)
+          send_message(state.transport_pid, response)
+          {:noreply, %{state | handler_state: new_handler_state}}
+      end
+    else
+      error = %{code: -32601, message: "Method not found: #{method}"}
+      response = build_error_response(id, error)
+      send_message(state.transport_pid, response)
+      {:noreply, state}
+    end
   end
 
   defp handle_response(id, response_message, state) do
     case Map.pop(state.pending_requests, id) do
-      {from, new_pending} ->
+      {from, new_pending} when from != nil ->
         GenServer.reply(from, response_message)
         {:noreply, %{state | pending_requests: new_pending}}
 
-      {nil, _} ->
+      _ ->
         Logger.warning("Received response for unknown request ID: #{id}")
         {:noreply, state}
     end
+  end
+
+  defp method_to_callback(method) do
+    ("handle_" <> String.replace(method, "/", "_"))
+    |> String.to_atom()
   end
 
   defp build_request(id, method, params) do
@@ -183,6 +231,22 @@ defmodule ACPex.Protocol.Connection do
       "jsonrpc" => "2.0",
       "method" => method,
       "params" => params
+    }
+  end
+
+  defp build_error_response(id, error) do
+    %{
+      "jsonrpc" => "2.0",
+      "id" => id,
+      "error" => error
+    }
+  end
+
+  defp build_response(id, result) do
+    %{
+      "jsonrpc" => "2.0",
+      "id" => id,
+      "result" => result
     }
   end
 
