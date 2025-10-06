@@ -68,7 +68,7 @@ defmodule ACPex.MixProject do
           ACPex.Protocol.SessionSupervisor
         ],
         "Data Types": [ACPex.Schema, ACPex.Json],
-        Transport: [ACPex.Transport.Stdio],
+        Transport: [ACPex.Transport.Ndjson],
         Application: [ACPex.Application]
       ]
     ]

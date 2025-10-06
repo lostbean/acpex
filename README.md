@@ -42,8 +42,8 @@ for agent-client communication.
   stateful, bidirectional JSON-RPC communication, with clear `ACPex.Client` and
   `ACPex.Agent` behaviours.
 - **Non-Blocking Transport Layer**: Uses an Erlang Port
-  (`ACPex.Transport.Stdio`) for non-blocking, asynchronous I/O over
-  stdin/stdout.
+  (`ACPex.Transport.Ndjson`) for non-blocking, asynchronous newline-delimited
+  JSON (ndjson) I/O over stdin/stdout.
 - **Full Protocol Implementation**: Implements the full JSON-RPC 2.0
   specification for bidirectional requests, notifications, and request/response
   correlation.

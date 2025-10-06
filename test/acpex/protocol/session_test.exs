@@ -298,8 +298,7 @@ defmodule ACPex.Protocol.SessionTest do
   # Helper function to parse response
   defp parse_response(response_payload) do
     response_payload
-    |> String.split("\r\n\r\n", parts: 2)
-    |> Enum.at(1)
+    |> String.trim()
     |> Jason.decode!()
   end
 end

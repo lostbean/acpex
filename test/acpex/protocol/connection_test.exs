@@ -56,8 +56,7 @@ defmodule ACPex.Protocol.ConnectionTest do
     # Assert that the mock transport received the response
     assert_receive {:transport_data, response_payload}
 
-    response =
-      response_payload |> String.split("\r\n\r\n", parts: 2) |> Enum.at(1) |> Jason.decode!()
+    response = response_payload |> String.trim() |> Jason.decode!()
 
     assert response["id"] == 1
     assert response["result"] == %{"protocol_version" => "1.0", "capabilities" => %{}}
@@ -75,8 +74,7 @@ defmodule ACPex.Protocol.ConnectionTest do
 
     assert_receive {:transport_data, response_payload}
 
-    response =
-      response_payload |> String.split("\r\n\r\n", parts: 2) |> Enum.at(1) |> Jason.decode!()
+    response = response_payload |> String.trim() |> Jason.decode!()
 
     assert response["id"] == 2
     assert is_binary(response["result"]["session_id"])
@@ -94,11 +92,7 @@ defmodule ACPex.Protocol.ConnectionTest do
     send(conn, {:message, new_session_req})
     assert_receive {:transport_data, new_session_payload}
 
-    new_session_resp =
-      new_session_payload
-      |> String.split("\r\n\r\n", parts: 2)
-      |> Enum.at(1)
-      |> Jason.decode!()
+    new_session_resp = new_session_payload |> String.trim() |> Jason.decode!()
 
     session_id = new_session_resp["result"]["session_id"]
     assert is_binary(session_id)
@@ -115,8 +109,7 @@ defmodule ACPex.Protocol.ConnectionTest do
     send(conn, {:message, prompt_req})
     assert_receive {:transport_data, prompt_payload}
 
-    prompt_resp =
-      prompt_payload |> String.split("\r\n\r\n", parts: 2) |> Enum.at(1) |> Jason.decode!()
+    prompt_resp = prompt_payload |> String.trim() |> Jason.decode!()
 
     assert prompt_resp["id"] == "prompt-req"
     assert prompt_resp["result"] == %{"content" => "prompt response"}
@@ -126,13 +119,14 @@ defmodule ACPex.Protocol.ConnectionTest do
     {:ok, transport_pid} = MockTransport.start_link(self())
 
     # This should not crash - agent_path should be extracted from nested opts
-    result = Connection.start_link(
-      handler_module: TestHandler,
-      handler_args: [],
-      role: :client,
-      transport_pid: transport_pid,
-      opts: [agent_path: "/usr/bin/gemini"]
-    )
+    result =
+      Connection.start_link(
+        handler_module: TestHandler,
+        handler_args: [],
+        role: :client,
+        transport_pid: transport_pid,
+        opts: [agent_path: "/usr/bin/gemini"]
+      )
 
     # If the fix works, we should get a connection (transport_pid is provided so no spawn needed)
     assert {:ok, _pid} = result
@@ -140,12 +134,13 @@ defmodule ACPex.Protocol.ConnectionTest do
 
   test "returns error when agent_path missing for client role without transport_pid" do
     # Without transport_pid and without agent_path, should fail
-    result = Connection.start_link(
-      handler_module: TestHandler,
-      handler_args: [],
-      role: :client,
-      opts: []
-    )
+    result =
+      Connection.start_link(
+        handler_module: TestHandler,
+        handler_args: [],
+        role: :client,
+        opts: []
+      )
 
     # Should fail because agent_path is required when no transport_pid
     assert {:error, _reason} = result

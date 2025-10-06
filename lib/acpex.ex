@@ -59,7 +59,7 @@ defmodule ACPex do
 
   alias ACPex.Protocol.ConnectionSupervisor
 
-  @type start_option :: {:name, atom()} | {:agent_path, String.t()}
+  @type start_option :: {:name, atom()} | {:agent_path, String.t()} | {:agent_args, [String.t()]}
   @type start_result :: {:ok, pid()} | {:error, term()}
 
   @doc """
@@ -71,12 +71,19 @@ defmodule ACPex do
 
     * `:name` - Register the connection with a name
     * `:agent_path` - Path to the agent executable (required)
+    * `:agent_args` - List of command-line arguments to pass to the agent (optional, agent-specific)
 
   ## Examples
 
+      # Basic usage
       {:ok, pid} = ACPex.start_client(MyClient, [],
-        agent_path: "/path/to/agent",
-        name: :my_acp_client
+        agent_path: "/path/to/agent"
+      )
+
+      # With agent-specific arguments (e.g., Gemini CLI)
+      {:ok, pid} = ACPex.start_client(MyClient, [],
+        agent_path: "/usr/bin/gemini",
+        agent_args: ["--experimental-acp"]
       )
 
   """

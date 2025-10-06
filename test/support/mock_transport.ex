@@ -3,7 +3,7 @@ defmodule ACPex.Test.MockTransport do
   A mock transport for testing ACPex.Connection.
 
   Instead of using stdio, this transport sends messages to the test process.
-  It mimics the framing logic of the real Stdio transport.
+  It mimics the framing logic of the real Ndjson transport.
   """
   use GenServer
 
@@ -20,9 +20,9 @@ defmodule ACPex.Test.MockTransport do
 
   @impl true
   def handle_info({:send_message, message}, state) do
+    # Use ndjson framing: JSON + newline
     json = Jason.encode!(message)
-    frame = "Content-Length: " <> Integer.to_string(byte_size(json)) <> "\r\n\r\n" <> json
-    send(state.parent, {:transport_data, frame})
+    send(state.parent, {:transport_data, json <> "\n"})
     {:noreply, state}
   end
 end

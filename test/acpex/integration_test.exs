@@ -34,7 +34,7 @@ defmodule ACPex.IntegrationTest do
       if token == "valid_token" do
         {:ok, %{"authenticated" => true}, state}
       else
-        {:error, %{"code" => -32000, "message" => "Invalid token"}, state}
+        {:error, %{"code" => -32_000, "message" => "Invalid token"}, state}
       end
     end
 
@@ -69,7 +69,7 @@ defmodule ACPex.IntegrationTest do
     end
 
     def handle_load_session(_params, state) do
-      {:error, %{"code" => -32001, "message" => "Session not found"}, state}
+      {:error, %{"code" => -32_001, "message" => "Session not found"}, state}
     end
   end
 
@@ -89,7 +89,7 @@ defmodule ACPex.IntegrationTest do
     def handle_fs_read_text_file(%{"path" => path}, state) do
       case Map.get(state.files, path) do
         nil ->
-          {:error, %{"code" => -32001, "message" => "File not found"}, state}
+          {:error, %{"code" => -32_001, "message" => "File not found"}, state}
 
         content ->
           {:ok, %{"content" => content}, state}
@@ -228,7 +228,7 @@ defmodule ACPex.IntegrationTest do
       response = parse_response(response_payload)
 
       assert response["id"] == 1
-      assert response["error"]["code"] == -32000
+      assert response["error"]["code"] == -32_000
       assert response["error"]["message"] == "Invalid token"
     end
 
@@ -259,7 +259,7 @@ defmodule ACPex.IntegrationTest do
       response = parse_response(response_payload)
 
       assert response["id"] == 1
-      assert response["error"]["code"] == -32001
+      assert response["error"]["code"] == -32_001
       assert response["error"]["message"] =~ "Unknown session_id"
     end
   end
@@ -361,7 +361,7 @@ defmodule ACPex.IntegrationTest do
       response = parse_response(response_payload)
 
       assert response["id"] == 999
-      assert response["error"]["code"] == -32601
+      assert response["error"]["code"] == -32_601
       assert response["error"]["message"] =~ "Method not found"
     end
   end
@@ -447,11 +447,10 @@ defmodule ACPex.IntegrationTest do
     end
   end
 
-  # Helper to parse transport response
+  # Helper to parse transport response (ndjson format)
   defp parse_response(response_payload) do
     response_payload
-    |> String.split("\r\n\r\n", parts: 2)
-    |> Enum.at(1)
+    |> String.trim()
     |> Jason.decode!()
   end
 end

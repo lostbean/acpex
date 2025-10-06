@@ -55,7 +55,7 @@ defmodule ACPex.Protocol.Connection do
   require Logger
 
   alias ACPex.Protocol.SessionSupervisor
-  alias ACPex.Transport.Stdio
+  alias ACPex.Transport.Ndjson
 
   defstruct handler_module: nil,
             handler_state: nil,
@@ -88,9 +88,10 @@ defmodule ACPex.Protocol.Connection do
     {gen_opts, init_opts} = Keyword.split(nested_opts, [:name])
 
     # Merge init_opts (like :agent_path) back into main opts, then remove :opts key
-    merged_opts = opts
-                  |> Keyword.delete(:opts)
-                  |> Keyword.merge(init_opts)
+    merged_opts =
+      opts
+      |> Keyword.delete(:opts)
+      |> Keyword.merge(init_opts)
 
     GenServer.start_link(__MODULE__, merged_opts, gen_opts)
   end
@@ -211,20 +212,86 @@ defmodule ACPex.Protocol.Connection do
   end
 
   defp start_managed_transport(:agent, opts) do
-    transport_module = Keyword.get(opts, :transport, Stdio)
+    transport_module = Keyword.get(opts, :transport, Ndjson)
     transport_module.start_link(self())
   end
 
   defp start_managed_transport(:client, opts) do
-    transport_module = Keyword.get(opts, :transport, Stdio)
+    transport_module = Keyword.get(opts, :transport, Ndjson)
 
     case Keyword.get(opts, :agent_path) do
       nil ->
         {:error, "agent_path must be provided for client role"}
 
       path ->
-        transport_opts = [port_opts: {:spawn_executable, path}]
+        # Get optional agent args (specific to each agent implementation)
+        agent_args = Keyword.get(opts, :agent_args, [])
+
+        # Resolve the actual executable and args
+        {executable, full_args} = resolve_executable(path, agent_args)
+
+        transport_opts = [
+          port_opts: {:spawn_executable, executable},
+          port_args: full_args
+        ]
+
+        Logger.debug(
+          "Starting transport for executable=#{executable}, args=#{inspect(full_args)}"
+        )
+
         transport_module.start_link(self(), transport_opts)
+    end
+  end
+
+  # Resolve the executable path, handling Node.js scripts
+  defp resolve_executable(path, args) do
+    # Resolve symlinks to get the real path
+    real_path =
+      case File.read_link(path) do
+        {:ok, target} ->
+          # If it's a relative symlink, resolve it relative to the symlink's directory
+          if String.starts_with?(target, "/") do
+            target
+          else
+            path
+            |> Path.dirname()
+            |> Path.join(target)
+            |> Path.expand()
+          end
+
+        {:error, _} ->
+          # Not a symlink, use as-is
+          path
+      end
+
+    # Check if it's a Node.js script (ends with .js or .mjs)
+    cond do
+      String.ends_with?(real_path, [".js", ".mjs"]) ->
+        # It's a JavaScript file, need to run with node
+        node_path = System.find_executable("node") || "node"
+        {node_path, [real_path | args]}
+
+      # Check if original path is a script with shebang
+      is_script_with_shebang?(real_path) ->
+        # Has shebang, but Erlang ports may not handle it, use the original path
+        # and hope it's executable, otherwise this will fail with a clear error
+        {path, args}
+
+      true ->
+        # Looks like a real binary executable
+        {path, args}
+    end
+  end
+
+  defp is_script_with_shebang?(path) do
+    case File.open(path, [:read]) do
+      {:ok, file} ->
+        first_bytes = IO.binread(file, 2)
+        File.close(file)
+        first_bytes == "#!"
+
+      {:error, _} ->
+        false
     end
   end
 
@@ -241,18 +308,25 @@ defmodule ACPex.Protocol.Connection do
 
       {:error, reason} ->
         Logger.error("Failed to start session: #{inspect(reason)}")
-        error = %{code: -32000, message: "Failed to start session"}
+        error = %{code: -32_000, message: "Failed to start session"}
         response = build_error_response(msg["id"], error)
         send_message(state.transport_pid, response)
         {:noreply, state}
     end
   end
 
+  # Handle both camelCase and snake_case session_id in params
+  defp handle_incoming_message(%{"params" => %{"sessionId" => session_id}} = msg, state) do
+    # Convert camelCase to snake_case and forward
+    msg_with_snake_case = put_in(msg, ["params", "session_id"], session_id)
+    handle_incoming_message(msg_with_snake_case, state)
+  end
+
   defp handle_incoming_message(%{"params" => %{"session_id" => session_id}} = msg, state) do
     case Map.get(state.sessions, session_id) do
       nil ->
         Logger.error("Received message for unknown session_id: #{session_id}")
-        error = %{code: -32001, message: "Unknown session_id: #{session_id}"}
+        error = %{code: -32_001, message: "Unknown session_id: #{session_id}"}
         response = build_error_response(msg["id"], error)
         send_message(state.transport_pid, response)
         {:noreply, state}
@@ -288,7 +362,7 @@ defmodule ACPex.Protocol.Connection do
           {:noreply, %{state | handler_state: new_handler_state}}
       end
     else
-      error = %{code: -32601, message: "Method not found: #{method}"}
+      error = %{code: -32_601, message: "Method not found: #{method}"}
       response = build_error_response(id, error)
       send_message(state.transport_pid, response)
       {:noreply, state}
