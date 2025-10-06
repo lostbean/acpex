@@ -18,6 +18,7 @@ defmodule ACPex.Protocol.ConnectionTest do
     def handle_new_session(params, state), do: {:ok, params, state}
     def handle_load_session(params, state), do: {:ok, params, state}
     def handle_prompt(params, state), do: {:ok, params, state}
+    def handle_session_prompt(_params, state), do: {:ok, %{"content" => "prompt response"}, state}
     def handle_cancel(_params, state), do: {:noreply, state}
     def handle_authenticate(params, state), do: {:ok, params, state}
   end
@@ -79,5 +80,45 @@ defmodule ACPex.Protocol.ConnectionTest do
 
     assert response["id"] == 2
     assert is_binary(response["result"]["session_id"])
+  end
+
+  test "routes session messages to the correct session process", %{conn: conn} do
+    # 1. Create a new session
+    new_session_req = %{
+      "jsonrpc" => "2.0",
+      "id" => "new-session-req",
+      "method" => "session/new",
+      "params" => %{}
+    }
+
+    send(conn, {:message, new_session_req})
+    assert_receive {:transport_data, new_session_payload}
+
+    new_session_resp =
+      new_session_payload
+      |> String.split("\r\n\r\n", parts: 2)
+      |> Enum.at(1)
+      |> Jason.decode!()
+
+    session_id = new_session_resp["result"]["session_id"]
+    assert is_binary(session_id)
+
+    # 2. Send a prompt to the new session
+    prompt_req = %{
+      "jsonrpc" => "2.0",
+      "id" => "prompt-req",
+      "method" => "session/prompt",
+      "params" => %{"content" => "Hello there"},
+      "session_id" => session_id
+    }
+
+    send(conn, {:message, prompt_req})
+    assert_receive {:transport_data, prompt_payload}
+
+    prompt_resp =
+      prompt_payload |> String.split("\r\n\r\n", parts: 2) |> Enum.at(1) |> Jason.decode!()
+
+    assert prompt_resp["id"] == "prompt-req"
+    assert prompt_resp["result"] == %{"content" => "prompt response"}
   end
 end
