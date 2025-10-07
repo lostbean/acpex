@@ -1,48 +1,18 @@
 # ACPex TODO
 
-## Critical Issues
-
-### 1. Debug and Fix `session/prompt` Timeout
-
-**Status:** 🔴 Blocking E2E tests **Context:** The transport now successfully
-spawns Claude Code ACP and handles `initialize` and `session/new`, but
-`session/prompt` requests time out after 90 seconds.
-
-**Tasks:**
-
-- [ ] Manually simulate the failed E2E test using `echo` commands piped directly
-      to the ACP agent
-  ```bash
-  # Test the complete flow manually to isolate the issue
-  echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,...}}' | /Users/edgar/.npm-global/bin/claude-code-acp
-  echo '{"jsonrpc":"2.0","id":2,"method":"session/new","params":{"cwd":"/tmp","mcpServers":[]}}' | ...
-  echo '{"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{...}}' | ...
-  ```
-- [ ] Compare manual interaction vs. automated test to identify differences
-- [ ] Add transport-level logging to see if prompt responses are being received
-      but not processed
-- [ ] Check if session updates (`session/update` notifications) are causing the
-      response to be missed
-- [ ] Verify the connection is properly routing session-level messages to
-      session GenServer
-
-**Location:** `test/acpex/e2e_test.exs:683` (test "creates session and handles
-prompts with claude code")
-
----
-
 ## Architecture Improvements
 
-### 2. Generic Executable Handling (Remove Node.js Special-Casing)
+### 1. Generic Executable Handling (Remove Node.js Special-Casing)
 
-**Status:** 🟡 Works but not ideal **Context:** Currently we have special logic
-to detect Node.js scripts and spawn them with `node`. This should be generalized
-to handle any executable properly.
+**Status:** 🟡 Works but not ideal **Context:** Exile integration is complete
+and working well! However, we still have special logic to detect Node.js scripts
+and spawn them with `node`. This should be generalized to handle any executable
+properly.
 
 **Current Issue:**
 
 ```elixir
-# lib/acpex/protocol/connection.ex:247-280
+# lib/acpex/protocol/connection.ex:262-299
 defp resolve_executable(path, args) do
   # Special cases for .js/.mjs files
   # Special cases for shebang scripts
@@ -52,11 +22,9 @@ end
 
 **Tasks:**
 
-- [ ] Research Elixir/Erlang best practices for spawning external processes
-  - Read Erlang Port documentation:
-    https://www.erlang.org/doc/man/erlang#open_port-2
-  - Check how other Elixir projects handle this (e.g., Porcelain, Exile)
-  - Look into `:os.cmd/1` vs `System.cmd/3` vs `Port.open/2` tradeoffs
+- [x] Research Elixir/Erlang best practices for spawning external processes
+  - ✅ Exile library chosen and integrated successfully
+  - ✅ Provides backpressure, async I/O, and proper stream handling
 - [ ] Simplify `resolve_executable/2` to handle all executables uniformly
   - Let the OS handle shebang scripts (they should work with
     `:spawn_executable`)
@@ -71,24 +39,32 @@ end
 
 - Port documentation: https://hexdocs.pm/elixir/Port.html
 - Erlang spawn options: https://www.erlang.org/doc/man/erlang#open_port-2
+- Exile library: https://github.com/akash-akya/exile (✅ integrated)
+
+**Note:** While we keep this task, the Node.js detection is currently working
+well with Exile. This is more of a code cleanliness improvement than a
+functional issue.
 
 ---
 
 ## Protocol Implementation
 
-### 3. Implement Proper Schema with Ecto.Schema
+### 2. Implement Proper Schema with Ecto.Schema
 
-**Status:** 🟡 Currently using plain maps **Context:** The official ACP
-specification defines a complete JSON schema. We should use `Ecto.Schema` to
-define typed structs for all protocol messages, ensuring type safety and
-automatic validation.
+**Status:** 🟡 Temporary solution in place **Context:** The official ACP
+specification defines a complete JSON schema. We currently have `ACPex.Json`
+module with custom structs using Inflex for case conversion, but we should
+migrate to `Ecto.Schema` for proper validation and type safety.
 
 **Current State:**
 
-- Messages are passed as plain maps with string keys
-- No compile-time validation
-- Manual key conversion between camelCase (protocol) and snake_case (Elixir)
-- No documentation of required/optional fields in the code
+- `ACPex.Json` module provides basic structs with camelCase ↔ snake_case
+  conversion
+- Uses Inflex library for case conversion
+- Basic structs defined in `lib/acpex/schema.ex`
+- Still passing plain maps in Connection/Session APIs
+- No compile-time validation or changeset-based validation
+- No documentation of required/optional fields beyond `@enforce_keys`
 
 **Tasks:**
 
@@ -157,10 +133,13 @@ automatic validation.
   ```
 
   **Key Points:**
-  - Use `:source` field option to explicitly map Elixir field names (snake_case) to JSON keys (camelCase)
+  - Use `:source` field option to explicitly map Elixir field names (snake_case)
+    to JSON keys (camelCase)
   - No need for separate case conversion functions - the schema IS the mapping
-  - `Ecto.embedded_dump(:json)` automatically uses `:source` mappings when encoding
-  - When decoding, use `Ecto.embedded_load/3` which also respects `:source` mappings
+  - `Ecto.embedded_dump(:json)` automatically uses `:source` mappings when
+    encoding
+  - When decoding, use `Ecto.embedded_load/3` which also respects `:source`
+    mappings
   - This makes the schema self-documenting and the single source of truth
 
 - [ ] Create helper module for encoding/decoding with schemas:
@@ -192,7 +171,7 @@ automatic validation.
 
 ---
 
-### 4. Use Structs Over Maps in Public API
+### 3. Use Structs Over Maps in Public API
 
 **Status:** 🟡 Mixed usage **Context:** Currently the API mixes structs and
 maps. We should consistently use structs for better developer experience.
@@ -221,22 +200,27 @@ def send_request(pid, %ACPex.Schema.SessionPromptRequest{session_id: session_id,
 
 ---
 
-### 5. Remove CamelCase Conversion Functions
+### 4. Remove CamelCase Conversion Functions
 
-**Status:** 🟡 Currently manual conversion **Context:** With proper Ecto
-schemas using `:source` field parameters, all key conversion is handled
-automatically by the schema layer - no separate conversion functions needed!
+**Status:** 🟡 Partially handled **Context:** `ACPex.Json` module handles
+systematic conversion for structs, but manual conversion still exists in some
+places. With proper Ecto schemas using `:source` field parameters, ALL key
+conversion should be handled automatically by the schema layer.
 
 **Current State:**
 
 ```elixir
-# lib/acpex/protocol/connection.ex:260-263
+# lib/acpex/protocol/connection.ex:351-363
 defp handle_incoming_message(%{"params" => %{"sessionId" => session_id}} = msg, state) do
   # Manual conversion - should be eliminated
-  msg_with_snake_case = put_in(msg, ["params", "session_id"], session_id)
+  new_params = params |> Map.put("session_id", session_id) |> Map.delete("sessionId")
+  msg_with_snake_case = Map.put(msg, "params", new_params)
   handle_incoming_message(msg_with_snake_case, state)
 end
 ```
+
+**Note:** `ACPex.Json` module provides automatic conversion for structs, but
+Connection/Session layers still work with plain maps and do manual conversions.
 
 **Target State with Schemas:**
 
@@ -253,7 +237,8 @@ end
 **Tasks:**
 
 - [ ] Remove all manual camelCase/snake_case conversion code
-- [ ] All conversions happen in schemas via `:source` field parameter (see Task #3)
+- [ ] All conversions happen in schemas via `:source` field parameter (see Task
+      #2)
 - [ ] Use `Ecto.embedded_dump(:json)` for encoding (respects `:source`)
 - [ ] Use `Ecto.embedded_load/3` for decoding (respects `:source`)
 - [ ] Schemas become the single source of truth for field name mappings
@@ -261,14 +246,15 @@ end
 
 **Location of manual conversions to remove:**
 
-- `lib/acpex/protocol/connection.ex:260-264`
-- `test/acpex/e2e_test.exs:314, 659, 711, 775, 843` (test assertions can use structs directly)
+- `lib/acpex/protocol/connection.ex:351-363` (sessionId conversion)
+- `lib/acpex/json.ex` - Replace entire module with Ecto schema approach
+- `test/acpex/e2e_test.exs` (test assertions can use structs directly)
 
 ---
 
 ## Testing & Quality
 
-### 6. Improve Test Coverage
+### 5. Improve Test Coverage
 
 **Tasks:**
 
@@ -278,7 +264,7 @@ end
 - [ ] Add property-based tests for schema encoding/decoding
 - [ ] Test concurrent sessions properly
 
-### 7. Performance & Reliability
+### 6. Performance & Reliability
 
 **Tasks:**
 
@@ -291,7 +277,7 @@ end
 
 ## Documentation
 
-### 8. API Documentation
+### 7. API Documentation
 
 **Tasks:**
 
@@ -309,7 +295,7 @@ end
 
 ## Future Features
 
-### 9. Additional Transport Options
+### 8. Additional Transport Options
 
 **Tasks:**
 
@@ -317,7 +303,7 @@ end
 - [ ] HTTP/SSE transport for serverless deployments
 - [ ] Unix socket transport for same-machine communication
 
-### 10. MCP Integration
+### 9. MCP Integration
 
 **Tasks:**
 
@@ -329,13 +315,39 @@ end
 
 ## Done ✅
 
+### Critical Issues Resolved
+
+- [x] **Debug and Fix `session/prompt` Timeout** - The transport now
+      successfully handles all Claude Code ACP operations including
+      `session/prompt`. Fixed by integrating Exile library with proper
+      backpressure and async I/O.
+  - Test location: `test/acpex/e2e_test.exs:676` (now passing)
+  - Solution: Exile integration eliminated timeout issues
+
+### Transport Layer Improvements
+
+- [x] **Integrate Exile for process management** - Transport now uses
+      `Exile.stream!` with proper backpressure, non-blocking async I/O, and
+      prevention of zombie processes
+  - Implementation: `lib/acpex/transport/ndjson.ex`
+  - Provides bidirectional streaming with automatic flow control
 - [x] Remove `:stderr_to_stdout` from transport (was polluting JSON stream)
 - [x] Fix Node.js script spawning (detect .js files, spawn with `node`)
 - [x] Add debug logging to transport layer
+
+### Protocol Compliance
+
 - [x] Fix protocol version type (use integer `1` not string `"1.0"`)
 - [x] Update test assertions to accept multiple protocol version formats
 - [x] Fix capabilities field name mismatch (`capabilities` vs
       `agentCapabilities`)
+
+### Schema & Serialization (Interim Solution)
+
+- [x] Create `ACPex.Json` module for camelCase ↔ snake_case conversion
+- [x] Define basic protocol structs in `lib/acpex/schema.ex`
+- [x] Add Inflex dependency for case conversion
+  - Note: This is a temporary solution; migration to Ecto.Schema planned
 
 ---
 

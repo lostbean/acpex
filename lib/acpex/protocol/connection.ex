@@ -186,6 +186,11 @@ defmodule ACPex.Protocol.Connection do
 
   @impl true
   def handle_info({:message, message}, state) do
+    Logger.debug(
+      "Connection received message: #{inspect(Map.take(message, ["id", "method", "jsonrpc"]))}"
+    )
+
+    Logger.debug("Full message keys: #{inspect(Map.keys(message))}")
     handle_incoming_message(message, state)
   end
 
@@ -197,8 +202,18 @@ defmodule ACPex.Protocol.Connection do
 
   @impl true
   def handle_info({:session_started, session_id, session_pid}, state) do
-    new_sessions = Map.put(state.sessions, session_id, session_pid)
-    {:noreply, %{state | sessions: new_sessions}}
+    # This message is now redundant since we register sessions synchronously
+    # But we keep the handler for backwards compatibility
+    Logger.debug("Received redundant :session_started notification for #{session_id}")
+
+    # Check if already registered
+    if Map.has_key?(state.sessions, session_id) do
+      {:noreply, state}
+    else
+      Logger.warning("Session #{session_id} not already registered, registering now")
+      new_sessions = Map.put(state.sessions, session_id, session_pid)
+      {:noreply, %{state | sessions: new_sessions}}
+    end
   end
 
   # Private Helpers
@@ -272,7 +287,7 @@ defmodule ACPex.Protocol.Connection do
         {node_path, [real_path | args]}
 
       # Check if original path is a script with shebang
-      is_script_with_shebang?(real_path) ->
+      script_with_shebang?(real_path) ->
         # Has shebang, but Erlang ports may not handle it, use the original path
         # and hope it's executable, otherwise this will fail with a clear error
         {path, args}
@@ -283,7 +298,7 @@ defmodule ACPex.Protocol.Connection do
     end
   end
 
-  defp is_script_with_shebang?(path) do
+  defp script_with_shebang?(path) do
     case File.open(path, [:read]) do
       {:ok, file} ->
         first_bytes = IO.binread(file, 2)
@@ -296,6 +311,8 @@ defmodule ACPex.Protocol.Connection do
   end
 
   defp handle_incoming_message(%{"method" => "session/new"} = msg, state) do
+    Logger.debug("→ Pattern matched: session/new request")
+
     case SessionSupervisor.start_session(
            state.session_sup,
            state.handler_module,
@@ -303,8 +320,22 @@ defmodule ACPex.Protocol.Connection do
            state.transport_pid
          ) do
       {:ok, session_pid} ->
+        # Get the session ID synchronously and register it immediately
+        # This prevents race conditions where session/update notifications
+        # arrive before the session is registered
+        session_id = ACPex.Protocol.Session.get_session_id(session_pid)
+
+        Logger.debug(
+          "  Session started: #{inspect(session_pid)}, session_id: #{session_id}, registering and forwarding request"
+        )
+
+        # Register the session immediately
+        new_sessions = Map.put(state.sessions, session_id, session_pid)
+        new_state = %{state | sessions: new_sessions}
+
+        # Now forward the request
         send(session_pid, {:request, self(), msg})
-        {:noreply, state}
+        {:noreply, new_state}
 
       {:error, reason} ->
         Logger.error("Failed to start session: #{inspect(reason)}")
@@ -316,40 +347,87 @@ defmodule ACPex.Protocol.Connection do
   end
 
   # Handle both camelCase and snake_case session_id in params
-  defp handle_incoming_message(%{"params" => %{"sessionId" => session_id}} = msg, state) do
-    # Convert camelCase to snake_case and forward
-    msg_with_snake_case = put_in(msg, ["params", "session_id"], session_id)
+  # Only convert if session_id doesn't already exist (avoid infinite loop)
+  defp handle_incoming_message(%{"params" => %{"sessionId" => session_id} = params} = msg, state)
+       when not is_map_key(params, "session_id") do
+    Logger.debug("→ Pattern matched: message with camelCase sessionId, converting to snake_case")
+
+    # Convert camelCase to snake_case by adding session_id and removing sessionId
+    new_params =
+      params
+      |> Map.put("session_id", session_id)
+      |> Map.delete("sessionId")
+
+    msg_with_snake_case = Map.put(msg, "params", new_params)
     handle_incoming_message(msg_with_snake_case, state)
   end
 
   defp handle_incoming_message(%{"params" => %{"session_id" => session_id}} = msg, state) do
+    Logger.debug(
+      "→ Pattern matched: session-level message (session_id: #{session_id}, method: #{msg["method"]}, has_id: #{!!msg["id"]})"
+    )
+
     case Map.get(state.sessions, session_id) do
       nil ->
-        Logger.error("Received message for unknown session_id: #{session_id}")
-        error = %{code: -32_001, message: "Unknown session_id: #{session_id}"}
-        response = build_error_response(msg["id"], error)
-        send_message(state.transport_pid, response)
-        {:noreply, state}
+        # Only create sessions on-demand for clients
+        # Agents should error on unknown session_ids
+        if state.role == :client do
+          Logger.debug("Session not found, creating on-demand for session_id: #{session_id}")
+
+          case SessionSupervisor.start_session(
+                 state.session_sup,
+                 state.handler_module,
+                 state.handler_state,
+                 state.transport_pid,
+                 session_id
+               ) do
+            {:ok, session_pid} ->
+              Logger.debug("  Created session #{inspect(session_pid)}, forwarding message")
+              new_sessions = Map.put(state.sessions, session_id, session_pid)
+              send(session_pid, {:forward, msg})
+              {:noreply, %{state | sessions: new_sessions}}
+
+            {:error, reason} ->
+              Logger.error("Failed to create session on-demand: #{inspect(reason)}")
+              error = %{code: -32_000, message: "Failed to create session"}
+              response = build_error_response(msg["id"], error)
+              send_message(state.transport_pid, response)
+              {:noreply, state}
+          end
+        else
+          Logger.error("Received message for unknown session_id: #{session_id}")
+          Logger.debug("  Known sessions: #{inspect(Map.keys(state.sessions))}")
+          error = %{code: -32_001, message: "Unknown session_id: #{session_id}"}
+          response = build_error_response(msg["id"], error)
+          send_message(state.transport_pid, response)
+          {:noreply, state}
+        end
 
       session_pid ->
+        Logger.debug("  Forwarding to session #{inspect(session_pid)}")
         send(session_pid, {:forward, msg})
         {:noreply, state}
     end
   end
 
   defp handle_incoming_message(%{"id" => id, "result" => _result} = msg, state) do
+    Logger.debug("→ Pattern matched: response with result (id: #{id})")
     handle_response(id, msg, state)
   end
 
   defp handle_incoming_message(%{"id" => id, "error" => _error} = msg, state) do
+    Logger.debug("→ Pattern matched: response with error (id: #{id})")
     handle_response(id, msg, state)
   end
 
   # Fallback for connection-level requests (initialize, etc.)
   defp handle_incoming_message(%{"id" => id, "method" => method, "params" => params}, state) do
+    Logger.debug("→ Pattern matched: connection-level request (method: #{method}, id: #{id})")
     callback = method_to_callback(method)
 
     if function_exported?(state.handler_module, callback, 2) do
+      Logger.debug("  Calling handler: #{state.handler_module}.#{callback}/2")
+
       case apply(state.handler_module, callback, [params, state.handler_state]) do
         {:ok, result, new_handler_state} ->
           response = build_response(id, result)
@@ -362,6 +440,7 @@ defmodule ACPex.Protocol.Connection do
           {:noreply, %{state | handler_state: new_handler_state}}
       end
     else
+      Logger.warning("  Method not found: #{method}, handler doesn't export #{callback}/2")
       error = %{code: -32_601, message: "Method not found: #{method}"}
       response = build_error_response(id, error)
       send_message(state.transport_pid, response)
@@ -369,14 +448,35 @@ defmodule ACPex.Protocol.Connection do
     end
   end
 
+  # Catch-all for any messages that don't match the above patterns
+  defp handle_incoming_message(msg, state) do
+    Logger.warning("→ Pattern matched: UNHANDLED message type")
+    Logger.warning("  Message: #{inspect(msg)}")
+    Logger.warning("  This message doesn't match any expected pattern!")
+
+    # If it has an id, send an error response
+    if msg["id"] do
+      error = %{code: -32_600, message: "Invalid request: message format not recognized"}
+      response = build_error_response(msg["id"], error)
+      send_message(state.transport_pid, response)
+    end
+
+    {:noreply, state}
+  end
+
   defp handle_response(id, response_message, state) do
+    Logger.debug("  Handling response for request id: #{id}")
+    Logger.debug("  Pending requests: #{inspect(Map.keys(state.pending_requests))}")
+
     case Map.pop(state.pending_requests, id) do
       {from, new_pending} when from != nil ->
+        Logger.debug("  ✓ Found pending request, replying to caller: #{inspect(from)}")
         GenServer.reply(from, response_message)
         {:noreply, %{state | pending_requests: new_pending}}
 
       _ ->
-        Logger.warning("Received response for unknown request ID: #{id}")
+        Logger.warning("  ✗ Received response for unknown request ID: #{id}")
+        Logger.warning("    This might indicate a timeout or duplicate response")
         {:noreply, state}
     end
   end

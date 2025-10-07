@@ -1,41 +1,39 @@
 defmodule ACPex.E2ETest do
   @moduledoc """
-  End-to-end tests using real ACP agents.
+  Integration and end-to-end tests for the ACP protocol implementation.
 
-  These tests connect to actual ACP agents and verify the complete
-  protocol implementation works with real AI agents.
+  These tests verify the complete protocol implementation using both a simple
+  test agent (bash script) and the real Claude Code ACP agent.
 
   ## Running These Tests
 
-      # Run only e2e tests (using test agent)
-      mix test --only e2e
+      # Run all default tests (includes test_agent.sh integration tests)
+      mix test
 
-      # Run e2e tests including skipped tests (Claude Code ACP, etc.)
-      mix test --only e2e --include skip
+      # Run only Claude Code ACP tests (requires API key)
+      mix test --only claude_code_acp
 
-      # Run only Claude Code ACP tests
-      mix test test/acpex/e2e_test.exs:586 --include skip
+      # Run all tests including Claude Code ACP
+      mix test --include claude_code_acp
 
   ## Test Agents
 
-  ### Test Agent (bash script)
-  - Always available, no authentication needed
-  - Basic protocol verification
-  - Fast and reliable
+  ### Test Agent (test/support/test_agent.sh)
+  - Runs by default with `mix test`
+  - Simple bash script implementing basic ACP protocol
+  - Fast transport layer verification
+  - No external dependencies or authentication
 
   ### Claude Code ACP
-  - Requires installation: `npm install -g @zed-industries/claude-code-acp`
-  - Requires `ANTHROPIC_API_KEY` environment variable
-  - Tests are tagged `:skip` by default
-  - Tests streaming responses and real AI interaction
-
-  - Tests are tagged `:skip` by default
+  - Excluded by default (tagged with `:claude_code_acp`)
+  - Requires: `npm install -g @zed-industries/claude-code-acp`
+  - Requires: `ANTHROPIC_API_KEY` environment variable
+  - Tests real AI agent with streaming responses
+  - Slower (requires API calls to Claude)
   """
 
   use ExUnit.Case, async: false
 
-  @moduletag :e2e
-  @moduletag :external
   # 2 minutes for entire module
   @moduletag timeout: 120_000
 
@@ -194,14 +192,11 @@ defmodule ACPex.E2ETest do
   # ============================================================================
 
   setup_all do
-    cond do
-      true ->
-        # Clean up test directory
-        File.rm_rf!(@test_dir)
-        File.mkdir_p!(@test_dir)
+    # Clean up test directory
+    File.rm_rf!(@test_dir)
+    File.mkdir_p!(@test_dir)
 
-        :ok
-    end
+    :ok
   end
 
   setup context do
@@ -425,7 +420,6 @@ defmodule ACPex.E2ETest do
       assert stop_reason in ["done", "end_turn", "stop", "completed", nil]
     end
 
-    @tag :skip
     @tag timeout: 90_000
     test "receives session updates during processing", %{conn: conn, session_id: session_id} do
       # Note: This test requires an agent that sends session/update notifications
@@ -499,7 +493,6 @@ defmodule ACPex.E2ETest do
       %{conn: conn, session_id: session_id}
     end
 
-    @tag :skip
     @tag timeout: 90_000
     test "agent can read files when prompted", %{conn: conn, session_id: session_id} do
       # Note: This test requires an agent that makes file system requests
@@ -531,11 +524,8 @@ defmodule ACPex.E2ETest do
   end
 
   describe "cleanup" do
-    @tag :skip
     @tag timeout: 10_000
     test "connection stops cleanly" do
-      # Note: This test is skipped because supervised processes don't respond to Process.exit
-      # Proper shutdown would require stopping the supervisor
       {:ok, conn} =
         ACPex.start_client(
           TestClient,
@@ -549,11 +539,11 @@ defmodule ACPex.E2ETest do
       # Monitor the connection
       ref = Process.monitor(conn)
 
-      # Stop the connection
-      Process.exit(conn, :normal)
+      # Stop the connection using GenServer.stop (proper shutdown)
+      GenServer.stop(conn, :normal, 5000)
 
       # Wait for process to terminate
-      assert_receive {:DOWN, ^ref, :process, ^conn, _reason}, 1_000
+      assert_receive {:DOWN, ^ref, :process, ^conn, :normal}, 1_000
 
       # Should be dead
       refute Process.alive?(conn)
@@ -574,13 +564,13 @@ defmodule ACPex.E2ETest do
   # ============================================================================
 
   describe "claude code acp availability" do
-    @tag :skip
+    @moduletag :claude_code_acp
+
     test "claude-code-acp exists at expected path" do
       assert File.exists?(@claude_code_path),
              "Claude Code ACP not found at #{@claude_code_path}. Install with: npm install -g @zed-industries/claude-code-acp"
     end
 
-    @tag :skip
     test "claude-code-acp is executable" do
       stat = File.stat!(@claude_code_path)
 
@@ -588,7 +578,6 @@ defmodule ACPex.E2ETest do
              "Claude Code ACP not executable"
     end
 
-    @tag :skip
     test "claude code acp is authenticated" do
       assert claude_code_authenticated?(),
              "ANTHROPIC_API_KEY not set. Set it with: export ANTHROPIC_API_KEY=sk-..."
@@ -596,6 +585,8 @@ defmodule ACPex.E2ETest do
   end
 
   describe "claude code acp integration" do
+    @moduletag :claude_code_acp
+
     setup do
       # Skip tests if Claude Code ACP is not available or not authenticated
       cond do
@@ -814,7 +805,12 @@ defmodule ACPex.E2ETest do
     end
 
     @tag timeout: 180_000
+    @tag :skip
     test "claude code can read files when prompted" do
+      # NOTE: This test is skipped because Claude Code uses its own internal file
+      # reading capabilities rather than making fs/read_text_file requests back to
+      # the client. The test_agent.sh demonstrates bidirectional file requests,
+      # but Claude Code has direct filesystem access and doesn't use this pattern.
       {:ok, conn} =
         ACPex.start_client(
           TestClient,

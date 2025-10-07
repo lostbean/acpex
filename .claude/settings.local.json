@@ -5,7 +5,8 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:hexdocs.pm)",
       "WebFetch(domain:agentclientprotocol.com)",
-      "Bash(/Users/edgar/.npm-global/bin/claude-code-acp)"
+      "Bash(/Users/edgar/.npm-global/bin/claude-code-acp)",
+      "Bash(mix compile)"
     ],
     "deny": [],
     "ask": []

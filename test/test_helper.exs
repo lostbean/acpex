@@ -1,3 +1,3 @@
-# Exclude e2e and external tests by default
-# Run them with: mix test --include e2e
-ExUnit.start(exclude: [:e2e, :external])
+# Exclude Claude Code ACP tests by default (require API key and slow)
+# Run them with: mix test --only claude_code_acp
+ExUnit.start(exclude: [:claude_code_acp])

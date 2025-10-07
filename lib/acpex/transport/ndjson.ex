@@ -1,11 +1,15 @@
 defmodule ACPex.Transport.Ndjson do
   @moduledoc """
-  Newline-delimited JSON (ndjson) transport for ACP over stdio.
+  Newline-delimited JSON (ndjson) transport for ACP using Exile.
 
   The Agent Client Protocol uses newline-delimited JSON for message framing.
   Each JSON-RPC message is encoded as a single line terminated by `\\n`.
 
-  This is the official ACP transport mechanism as specified in the protocol.
+  This transport uses the Exile library for robust external process management with:
+  - Automatic back-pressure to prevent memory exhaustion
+  - Non-blocking asynchronous I/O
+  - Prevention of zombie processes
+  - Proper stream handling for bidirectional communication
 
   ## Message Format
 
@@ -18,13 +22,15 @@ defmodule ACPex.Transport.Ndjson do
 
   - ACP Specification: https://agentclientprotocol.com
   - NDJSON Specification: https://github.com/ndjson/ndjson-spec
+  - Exile Library: https://github.com/akash-akya/exile
   """
   use GenServer
   require Logger
 
-  defstruct port: nil,
-            parent: nil,
-            buffer: ""
+  defstruct parent: nil,
+            buffer: "",
+            stream_task: nil,
+            input_collector: nil
 
   @doc """
   Starts a new ndjson transport process.
@@ -36,8 +42,8 @@ defmodule ACPex.Transport.Ndjson do
 
   ## Options
 
-    * `:port_opts` - Erlang port options (default: `{:fd, 0, 1}` for stdio)
-    * `:port_args` - Command-line arguments when spawning executable
+    * `:port_opts` - Command specification for Exile
+    * `:port_args` - Command-line arguments
   """
   def start_link(parent, opts \\ []) do
     GenServer.start_link(__MODULE__, {parent, opts})
@@ -45,44 +51,42 @@ defmodule ACPex.Transport.Ndjson do
 
   @impl true
   def init({parent, opts}) do
-    port_opts = Keyword.get(opts, :port_opts, {:fd, 0, 1})
-    port_args = Keyword.get(opts, :port_args, [])
+    # Get command and args
+    cmd_spec = Keyword.get(opts, :port_opts)
+    args = Keyword.get(opts, :port_args, [])
 
-    Logger.debug(
-      "Transport initializing with port_opts=#{inspect(port_opts)}, port_args=#{inspect(port_args)}"
-    )
+    Logger.debug("Transport initializing with cmd=#{inspect(cmd_spec)}, args=#{inspect(args)}")
 
-    # Build port options
-    # - :binary for binary data mode
-    # - :eof to receive EOF notifications
-    # - :exit_status to get process exit codes
-    # NOTE: We do NOT use :stderr_to_stdout because agents may output debug
-    # messages to stderr that would pollute the JSON-RPC protocol stream
-    base_opts = [:binary, :eof, :exit_status]
+    # Build command list for Exile
+    cmd =
+      case cmd_spec do
+        {:spawn_executable, executable} ->
+          [executable | args]
 
-    arg_opts = if port_args != [], do: [{:args, port_args}], else: []
-
-    # Inherit environment variables when spawning executable
-    env_opts =
-      case port_opts do
-        {:spawn_executable, _} ->
-          current_env =
-            System.get_env()
-            |> Enum.map(fn {k, v} -> {String.to_charlist(k), String.to_charlist(v)} end)
-
-          [{:env, current_env}]
+        {:fd, _, _} ->
+          # For stdio mode (agent), use cat to pass through stdin/stdout
+          ["cat"]
 
         _ ->
-          []
+          raise "Unsupported port_opts: #{inspect(cmd_spec)}"
       end
 
-    full_opts = base_opts ++ arg_opts ++ env_opts
+    Logger.debug("Starting Exile stream with command: #{inspect(cmd)}")
 
-    Logger.debug("Opening port with opts: #{inspect(full_opts)}")
-    port = Port.open(port_opts, full_opts)
-    Logger.info("Transport port opened successfully: #{inspect(port)}")
+    transport_pid = self()
 
-    {:ok, %__MODULE__{port: port, parent: parent}}
+    # Create an input collector that can receive messages
+    {:ok, input_collector} = Agent.start_link(fn -> [] end)
+
+    # Start the stream in a separate task
+    stream_task =
+      Task.async(fn ->
+        run_exile_stream(transport_pid, input_collector, cmd)
+      end)
+
+    Logger.info("Exile stream started successfully")
+
+    {:ok, %__MODULE__{parent: parent, stream_task: stream_task, input_collector: input_collector}}
   end
 
   @impl true
@@ -94,44 +98,103 @@ defmodule ACPex.Transport.Ndjson do
       "→ Sending message: #{String.slice(json, 0, 200)}#{if String.length(json) > 200, do: "...", else: ""}"
     )
 
-    Port.command(state.port, json <> "\n")
+    # Add to input queue
+    Agent.update(state.input_collector, fn queue -> queue ++ [json <> "\n"] end)
+
     {:noreply, state}
   end
 
   @impl true
-  def handle_info({_port, {:data, data}}, state) do
+  def handle_info({:exile_data, data}, state) do
     Logger.debug(
       "← Received data (#{byte_size(data)} bytes): #{String.slice(data, 0, 200)}#{if byte_size(data) > 200, do: "...", else: ""}"
     )
 
-    state = process_incoming_data(state, data)
-    {:noreply, state}
+    new_state = process_incoming_data(state, data)
+    {:noreply, new_state}
   end
 
   @impl true
-  def handle_info({_port, :eof}, state) do
-    Logger.warning("Port EOF received")
+  def handle_info({:exile_closed, status}, state) do
+    Logger.info("Exile stream closed with status: #{inspect(status)}")
     send(state.parent, {:transport_closed})
     {:stop, :normal, state}
   end
 
   @impl true
-  def handle_info({port, {:exit_status, status}}, state) when port == state.port do
-    Logger.error("Port exited with status: #{status}")
+  def handle_info({ref, _result}, state) when is_reference(ref) do
+    # Task completed
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:DOWN, _ref, :process, _pid, reason}, state) do
+    Logger.error("Exile stream task died: #{inspect(reason)}")
     send(state.parent, {:transport_closed})
     {:stop, :normal, state}
   end
 
   @impl true
   def terminate(_reason, state) do
-    if state.port do
-      Port.close(state.port)
+    if state.input_collector do
+      Agent.stop(state.input_collector)
     end
 
     :ok
   end
 
-  # Private Functions
+  # Run the Exile stream with bidirectional communication
+  defp run_exile_stream(transport_pid, input_collector, cmd) do
+    # Create an input stream that pulls from the collector
+    input_stream = create_input_stream(input_collector)
+
+    try do
+      # Start the Exile stream with input
+      cmd
+      |> Exile.stream!(input: input_stream, stderr: :disable)
+      |> Stream.each(fn data ->
+        send(transport_pid, {:exile_data, data})
+      end)
+      |> Stream.run()
+
+      send(transport_pid, {:exile_closed, 0})
+    rescue
+      e in Exile.Stream.AbnormalExit ->
+        Logger.error("Exile process exited abnormally: #{inspect(e)}")
+        send(transport_pid, {:exile_closed, e.exit_status})
+    catch
+      kind, reason ->
+        Logger.error("Exile stream error: #{kind} - #{inspect(reason)}")
+        send(transport_pid, {:exile_closed, :error})
+    end
+  end
+
+  defp create_input_stream(input_collector) do
+    Stream.resource(
+      fn -> input_collector end,
+      fn collector ->
+        collector
+        |> Agent.get_and_update(fn
+          [item | rest] -> {item, rest}
+          [] -> {nil, []}
+        end)
+        |> handle_input_item(collector)
+      end,
+      fn _ -> :ok end
+    )
+  end
+
+  defp handle_input_item(nil, collector) do
+    # No data available, wait a bit
+    Process.sleep(10)
+    {[], collector}
+  end
+
+  defp handle_input_item(item, collector) do
+    {[item], collector}
+  end
+
+  # Private Functions - Message Processing
 
   defp process_incoming_data(state, new_data) do
     buffer = state.buffer <> new_data

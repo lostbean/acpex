@@ -127,16 +127,16 @@ all communication, which is categorized into three message types:
 The transport mechanism for these JSON-RPC messages uses newline-delimited JSON
 (ndjson), where each complete message is a single JSON object terminated by a
 newline character. When a user activates an AI agent, the client (editor) spawns
-the agent as a **subprocess**. Communication then occurs bidirectionally over the
-standard input (stdin) and standard output (stdout) streams of the subprocess.
-Each JSON-RPC message is encoded as a single line: `{...json...}\n`. This format
-simplifies parsing and provides natural message boundaries. This bidirectional
-channel is crucial to the protocol's design. It allows not only for the client
-to send requests to the agent (e.g., "refactor this function") but also for the
-agent to send requests back to the client. This reverse channel is essential for
-workflows like requesting user permission for a sensitive operation (e.g.,
-running a terminal command) or asking the client to read a file from the local
-filesystem.
+the agent as a **subprocess**. Communication then occurs bidirectionally over
+the standard input (stdin) and standard output (stdout) streams of the
+subprocess. Each JSON-RPC message is encoded as a single line: `{...json...}\n`.
+This format simplifies parsing and provides natural message boundaries. This
+bidirectional channel is crucial to the protocol's design. It allows not only
+for the client to send requests to the agent (e.g., "refactor this function")
+but also for the agent to send requests back to the client. This reverse channel
+is essential for workflows like requesting user permission for a sensitive
+operation (e.g., running a terminal command) or asking the client to read a file
+from the local filesystem.
 
 ### **2.3. The ACP Lifecycle: A Session-Centric Approach**
 
@@ -284,25 +284,38 @@ Concepts to acp\_ex OTP Components**
 | Long-running Prompt Turn    | Task (spawned by Session.GenServer)                 | Task          | Executes the agent's core logic asynchronously, preventing blocking.    |
 | Fault Tolerance & Lifecycle | AcpEx.ConnectionSupervisor, AcpEx.SessionSupervisor | Supervisor    | Monitors and restarts failed processes according to defined strategies. |
 
-### **3.3. The Transport Layer: A Dedicated Ndjson Port/Process**
+### **3.3. The Transport Layer: A Dedicated Ndjson Stream Process**
 
 To maintain a clean separation of concerns, the low-level logic of reading from
 stdin and writing to stdout should be isolated from the high-level application
 logic of the GenServers. This will be achieved by creating a dedicated transport
 module, AcpEx.Transport.Ndjson. This module will be responsible for the raw I/O
 operations using the newline-delimited JSON (ndjson) format. It will be
-implemented as a GenServer that manages an Elixir Port connected to the standard
-I/O of the BEAM virtual machine. Its responsibilities will include:
+implemented as a GenServer that manages bidirectional streaming communication
+via the Exile library, which provides robust external process management with
+automatic back-pressure and memory safety. Its responsibilities will include:
 
-- Continuously reading data from stdin, buffering until a complete line is
-  received.
+- Continuously reading data from the input stream, buffering until a complete
+  line is received.
 - Passing each complete line to a JSON parser (e.g., Jason).
 - Upon successful parsing, dispatching the decoded JSON-RPC message to the
   appropriate Connection.GenServer or Session.GenServer for processing.
 - Receiving outbound messages from the application GenServers.
 - Encoding these messages into JSON strings.
-- Writing the resulting JSON strings to stdout, followed by a newline character
-  (`\n`), as per the ndjson specification.
+- Writing the resulting JSON strings to the output stream, followed by a newline
+  character (`\n`), as per the ndjson specification.
+
+The use of the Exile library provides several critical advantages over
+traditional Erlang Ports:
+
+- **Automatic back-pressure:** Prevents unbounded memory growth when processing
+  large data streams, ensuring the system remains stable under heavy load.
+- **Non-blocking I/O:** Enables efficient asynchronous communication without
+  blocking the GenServer message loop.
+- **Process safety:** Automatically prevents zombie processes and handles
+  process cleanup correctly.
+- **Stream-based API:** Provides a natural fit for the streaming nature of
+  JSON-RPC communication over stdio.
 
 This architectural choice decouples the core protocol logic from the transport
 mechanism. The Connection and Session GenServers can operate purely in terms of
@@ -331,8 +344,9 @@ structure will be organized to promote clarity and separation of concerns:
 - lib/acp\_ex.ex: The main application module, responsible for starting the
   top-level supervisor.
 - lib/acp\_ex/application.ex: The OTP Application behaviour implementation.
-- lib/acp\_ex/transport/ndjson.ex: The dedicated module for handling standard I/O
-  with newline-delimited JSON (ndjson) message framing.
+- lib/acp\_ex/transport/ndjson.ex: The dedicated module for handling standard
+  I/O with newline-delimited JSON (ndjson) message framing via the Exile
+  library.
 - lib/acp\_ex/protocol/connection\_supervisor.ex: The supervisor for connection
   processes.
 - lib/acp\_ex/protocol/connection.ex: The GenServer implementation for managing
@@ -734,4 +748,3 @@ agent\_client\_protocol \- Rust \- Docs.rs,
 https://docs.rs/agent-client-protocol 22\. Discussions \- zed-industries
 agent-client-protocol \- GitHub,
 https://github.com/zed-industries/agent-client-protocol/discussions
-

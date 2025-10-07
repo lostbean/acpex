@@ -51,22 +51,25 @@ defmodule ACPex.Protocol.SessionSupervisor do
     * `handler_module` - Module implementing the protocol handler
     * `initial_handler_state` - Initial state for the handler
     * `transport_pid` - PID of the transport process
+    * `session_id` - (optional) Use this session_id instead of generating a new one
 
   ## Returns
 
   `{:ok, session_pid}` on success, or `{:error, reason}` on failure.
   """
-  @spec start_session(pid(), module(), term(), pid()) ::
+  @spec start_session(pid(), module(), term(), pid(), String.t() | nil) ::
           DynamicSupervisor.on_start_child()
-  def start_session(sup, handler_module, initial_handler_state, transport_pid) do
-    spec = {
-      Session,
-      %{
-        handler_module: handler_module,
-        initial_handler_state: initial_handler_state,
-        transport_pid: transport_pid
-      }
+  def start_session(sup, handler_module, initial_handler_state, transport_pid, session_id \\ nil) do
+    opts = %{
+      handler_module: handler_module,
+      initial_handler_state: initial_handler_state,
+      transport_pid: transport_pid
     }
+
+    # Add session_id only if provided
+    opts = if session_id, do: Map.put(opts, :session_id, session_id), else: opts
+
+    spec = {Session, opts}
 
     DynamicSupervisor.start_child(sup, spec)
   end
