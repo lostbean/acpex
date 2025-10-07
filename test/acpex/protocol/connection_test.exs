@@ -9,20 +9,43 @@ defmodule ACPex.Protocol.ConnectionTest do
   defmodule TestHandler do
     @behaviour ACPex.Agent
 
+    alias ACPex.Schema.Connection.{InitializeResponse, AuthenticateResponse}
+    alias ACPex.Schema.Session.{NewResponse, PromptResponse}
+
     def init(_args), do: {:ok, %{}}
 
     def handle_initialize(_params, state) do
-      response = %{"protocol_version" => "1.0", "capabilities" => %{}}
+      response = %InitializeResponse{
+        protocol_version: 1,
+        agent_capabilities: %{},
+        meta: %{}
+      }
+
       {:ok, response, state}
     end
 
     # Add other callbacks as needed for testing
-    def handle_new_session(params, state), do: {:ok, params, state}
-    def handle_load_session(params, state), do: {:ok, params, state}
-    def handle_prompt(params, state), do: {:ok, params, state}
-    def handle_session_prompt(_params, state), do: {:ok, %{"content" => "prompt response"}, state}
+    def handle_new_session(_params, state) do
+      {:ok, %NewResponse{}, state}
+    end
+
+    def handle_load_session(_params, state) do
+      {:error, %{code: -32_001, message: "Not supported"}, state}
+    end
+
+    def handle_prompt(_params, state) do
+      {:ok, %PromptResponse{stop_reason: "done"}, state}
+    end
+
+    def handle_session_prompt(_params, state) do
+      {:ok, %PromptResponse{stop_reason: "done"}, state}
+    end
+
     def handle_cancel(_params, state), do: {:noreply, state}
-    def handle_authenticate(params, state), do: {:ok, params, state}
+
+    def handle_authenticate(_params, state) do
+      {:ok, %AuthenticateResponse{authenticated: true}, state}
+    end
   end
 
   setup do
@@ -61,7 +84,8 @@ defmodule ACPex.Protocol.ConnectionTest do
     response = response_payload |> String.trim() |> Jason.decode!()
 
     assert response["id"] == 1
-    assert response["result"] == %{"protocol_version" => "1.0", "capabilities" => %{}}
+    assert response["result"]["protocolVersion"] == 1
+    assert response["result"]["agentCapabilities"] == %{}
   end
 
   test "handles session/new request and creates a session", %{conn: conn} do
@@ -79,7 +103,7 @@ defmodule ACPex.Protocol.ConnectionTest do
     response = response_payload |> String.trim() |> Jason.decode!()
 
     assert response["id"] == 2
-    assert is_binary(response["result"]["session_id"])
+    assert is_binary(response["result"]["sessionId"])
   end
 
   test "routes session messages to the correct session process", %{conn: conn} do
@@ -96,7 +120,7 @@ defmodule ACPex.Protocol.ConnectionTest do
 
     new_session_resp = new_session_payload |> String.trim() |> Jason.decode!()
 
-    session_id = new_session_resp["result"]["session_id"]
+    session_id = new_session_resp["result"]["sessionId"]
     assert is_binary(session_id)
 
     # 2. Send a prompt to the new session
@@ -104,8 +128,10 @@ defmodule ACPex.Protocol.ConnectionTest do
       "jsonrpc" => "2.0",
       "id" => "prompt-req",
       "method" => "session/prompt",
-      "params" => %{"content" => "Hello there"},
-      "session_id" => session_id
+      "params" => %{
+        "sessionId" => session_id,
+        "prompt" => [%{"type" => "text", "text" => "Hello there"}]
+      }
     }
 
     send(conn, {:message, prompt_req})
@@ -114,7 +140,7 @@ defmodule ACPex.Protocol.ConnectionTest do
     prompt_resp = prompt_payload |> String.trim() |> Jason.decode!()
 
     assert prompt_resp["id"] == "prompt-req"
-    assert prompt_resp["result"] == %{"content" => "prompt response"}
+    assert prompt_resp["result"]["stopReason"] == "done"
   end
 
   test "properly extracts agent_path from nested opts for client role" do

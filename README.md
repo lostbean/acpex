@@ -41,16 +41,19 @@ for agent-client communication.
 - **Core OTP Architecture**: A central `ACPex.Connection` GenServer manages the
   stateful, bidirectional JSON-RPC communication, with clear `ACPex.Client` and
   `ACPex.Agent` behaviours.
-- **Non-Blocking Transport Layer**: Uses an Erlang Port
-  (`ACPex.Transport.Ndjson`) for non-blocking, asynchronous newline-delimited
-  JSON (ndjson) I/O over stdin/stdout.
+- **Non-Blocking Transport Layer**: Uses native Erlang Ports for robust,
+  non-blocking, asynchronous newline-delimited JSON (ndjson) I/O over
+  stdin/stdout with automatic process cleanup and line-buffered message framing.
 - **Full Protocol Implementation**: Implements the full JSON-RPC 2.0
   specification for bidirectional requests, notifications, and request/response
   correlation.
-- **Typed Schema**: All protocol messages are defined as type-safe Elixir
-  structs in `ACPex.Schema` for clarity and Dialyzer compatibility.
+- **Typed Schema System**: Complete Ecto.Schema-based type system for all
+  protocol messages with automatic camelCase ↔ snake_case conversion via
+  `:source` field mappings. All 27 protocol types implemented with compile-time
+  validation.
 - **Best Practices**: Follows modern Elixir best practices, using `jason` for
-  high-performance JSON parsing and leveraging OTP principles for robustness.
+  high-performance JSON parsing, `ecto` for schemas, and leveraging OTP
+  principles for robustness.
 
 ## Installation
 
@@ -74,24 +77,38 @@ you implement the `ACPex.Client` behaviour.
 defmodule MyEditor.Client do
   @behaviour ACPex.Client
 
+  alias ACPex.Schema.Client.{FsReadTextFileResponse, FsWriteTextFileResponse}
+  alias ACPex.Schema.Session.UpdateNotification
+
   def init(_args) do
     # Return the initial state for your client
     {:ok, %{}}
   end
 
-  def handle_session_update(params, state) do
-    IO.inspect(params, label: "Update from agent")
+  def handle_session_update(%UpdateNotification{} = notification, state) do
+    IO.inspect(notification.update, label: "Update from agent")
     {:noreply, state}
   end
 
-  def handle_read_text_file(%{"path" => path}, state) do
-    case File.read(path) do
+  def handle_fs_read_text_file(request, state) do
+    case File.read(request.path) do
       {:ok, content} ->
-        {:ok, %{"content" => content}, state}
+        response = %FsReadTextFileResponse{content: content}
+        {:ok, response, state}
 
       {:error, _reason} ->
-        # In a real implementation, you would inspect the reason
         {:error, %{code: -32001, message: "File not found"}, state}
+    end
+  end
+
+  def handle_fs_write_text_file(request, state) do
+    case File.write(request.path, request.content) do
+      :ok ->
+        response = %FsWriteTextFileResponse{}
+        {:ok, response, state}
+
+      {:error, _reason} ->
+        {:error, %{code: -32002, message: "Failed to write file"}, state}
     end
   end
 
@@ -112,4 +129,3 @@ Full API documentation can be found at <https://hexdocs.pm/acpex>.
 ## License
 
 This project is licensed under the Apache-2.0 License.
-

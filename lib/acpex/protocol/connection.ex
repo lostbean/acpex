@@ -57,6 +57,11 @@ defmodule ACPex.Protocol.Connection do
 
   alias ACPex.Protocol.SessionSupervisor
   alias ACPex.Transport.Ndjson
+  alias ACPex.Schema.Codec
+  alias ACPex.Schema.Connection.InitializeRequest
+  alias ACPex.Schema.Connection.AuthenticateRequest
+  alias ACPex.Schema.Client.{FsReadTextFileRequest, FsWriteTextFileRequest}
+  alias ACPex.Schema.Client.Terminal
 
   defstruct handler_module: nil,
             handler_state: nil,
@@ -219,6 +224,47 @@ defmodule ACPex.Protocol.Connection do
 
   # Private Helpers
 
+  # Decode connection-level request params to appropriate struct
+  defp decode_connection_request("initialize", params) do
+    Codec.decode_from_map!(params, InitializeRequest)
+  end
+
+  defp decode_connection_request("authenticate", params) do
+    Codec.decode_from_map!(params, AuthenticateRequest)
+  end
+
+  # Client request methods (agent → client communication)
+  defp decode_connection_request("fs/read_text_file", params) do
+    Codec.decode_from_map!(params, FsReadTextFileRequest)
+  end
+
+  defp decode_connection_request("fs/write_text_file", params) do
+    Codec.decode_from_map!(params, FsWriteTextFileRequest)
+  end
+
+  defp decode_connection_request("terminal/create", params) do
+    Codec.decode_from_map!(params, Terminal.CreateRequest)
+  end
+
+  defp decode_connection_request("terminal/output", params) do
+    Codec.decode_from_map!(params, Terminal.OutputRequest)
+  end
+
+  defp decode_connection_request("terminal/wait_for_exit", params) do
+    Codec.decode_from_map!(params, Terminal.WaitForExitRequest)
+  end
+
+  defp decode_connection_request("terminal/kill", params) do
+    Codec.decode_from_map!(params, Terminal.KillRequest)
+  end
+
+  defp decode_connection_request("terminal/release", params) do
+    Codec.decode_from_map!(params, Terminal.ReleaseRequest)
+  end
+
+  # For any unknown connection-level methods, pass through as-is
+  defp decode_connection_request(_method, params), do: params
+
   defp start_transport(role, opts) do
     if transport_pid = opts[:transport_pid] do
       {:ok, transport_pid}
@@ -357,23 +403,28 @@ defmodule ACPex.Protocol.Connection do
     end
   end
 
-  # Handle both camelCase and snake_case session_id in params
-  # Only convert if session_id doesn't already exist (avoid infinite loop)
-  defp handle_incoming_message(%{"params" => %{"sessionId" => session_id} = params} = msg, state)
-       when not is_map_key(params, "session_id") do
-    Logger.debug("→ Pattern matched: message with camelCase sessionId, converting to snake_case")
+  # Session-level messages (check for both camelCase and snake_case for compatibility)
+  defp handle_incoming_message(%{"params" => %{"sessionId" => session_id}} = msg, state) do
+    Logger.debug(
+      "→ Pattern matched: session-level message (session_id: #{session_id}, method: #{msg["method"]}, has_id: #{!!msg["id"]})"
+    )
 
-    # Convert camelCase to snake_case by adding session_id and removing sessionId
-    new_params =
-      params
-      |> Map.put("session_id", session_id)
-      |> Map.delete("sessionId")
+    case Map.get(state.sessions, session_id) do
+      nil ->
+        handle_missing_session(msg, session_id, state)
 
-    msg_with_snake_case = Map.put(msg, "params", new_params)
-    handle_incoming_message(msg_with_snake_case, state)
+      session_pid ->
+        Logger.debug("  Forwarding to session #{inspect(session_pid)}")
+        send(session_pid, {:forward, msg})
+        {:noreply, state}
+    end
   end
 
-  defp handle_incoming_message(%{"params" => %{"session_id" => session_id}} = msg, state) do
+  # Also handle snake_case for backward compatibility
+  defp handle_incoming_message(%{"params" => params} = msg, state)
+       when is_map_key(params, "session_id") do
+    session_id = params["session_id"]
+
     Logger.debug(
       "→ Pattern matched: session-level message (session_id: #{session_id}, method: #{msg["method"]}, has_id: #{!!msg["id"]})"
     )
@@ -399,7 +450,7 @@ defmodule ACPex.Protocol.Connection do
     handle_response(id, msg, state)
   end
 
-  # Fallback for connection-level requests (initialize, etc.)
+  # Fallback for connection-level requests (initialize, authenticate, etc.)
   defp handle_incoming_message(%{"id" => id, "method" => method, "params" => params}, state) do
     Logger.debug("→ Pattern matched: connection-level request (method: #{method}, id: #{id})")
     callback = method_to_callback(method)
@@ -407,9 +458,14 @@ defmodule ACPex.Protocol.Connection do
     if function_exported?(state.handler_module, callback, 2) do
       Logger.debug("  Calling handler: #{state.handler_module}.#{callback}/2")
 
-      case apply(state.handler_module, callback, [params, state.handler_state]) do
-        {:ok, result, new_handler_state} ->
-          response = build_response(id, result)
+      # Decode params to appropriate struct based on method
+      request_struct = decode_connection_request(method, params)
+
+      case apply(state.handler_module, callback, [request_struct, state.handler_state]) do
+        {:ok, result_struct, new_handler_state} ->
+          # Encode struct response back to map for JSON-RPC transport
+          result_map = Codec.encode_to_map!(result_struct)
+          response = build_response(id, result_map)
           send_message(state.transport_pid, response)
           {:noreply, %{state | handler_state: new_handler_state}}
 

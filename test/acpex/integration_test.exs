@@ -15,15 +15,18 @@ defmodule ACPex.IntegrationTest do
   defmodule TestAgent do
     @behaviour ACPex.Agent
 
+    alias ACPex.Schema.Connection.{InitializeResponse, AuthenticateResponse}
+    alias ACPex.Schema.Session.{NewResponse, PromptResponse}
+
     def init(_args), do: {:ok, %{sessions: %{}}}
 
-    def handle_initialize(_params, state) do
-      response = %{
-        "protocol_version" => "1.0",
-        "capabilities" => %{
+    def handle_initialize(_request, state) do
+      response = %InitializeResponse{
+        protocol_version: 1,
+        agent_capabilities: %{
           "sessions" => %{"new" => true, "load" => false}
         },
-        "agent_info" => %{
+        meta: %{
           "name" => "TestAgent",
           "version" => "1.0.0"
         }
@@ -32,96 +35,112 @@ defmodule ACPex.IntegrationTest do
       {:ok, response, state}
     end
 
-    def handle_authenticate(%{"token" => token}, state) do
-      if token == "valid_token" do
-        {:ok, %{"authenticated" => true}, state}
+    def handle_authenticate(request, state) do
+      # Check if the method_id is valid
+      if request.method_id == "token" or request.method_id == "api_key" do
+        response = %AuthenticateResponse{
+          authenticated: true
+        }
+
+        {:ok, response, state}
       else
-        {:error, %{"code" => -32_000, "message" => "Invalid token"}, state}
+        {:error, %{code: -32_000, message: "Invalid authentication method"}, state}
       end
     end
 
-    def handle_new_session(_params, state) do
+    def handle_new_session(_request, state) do
       session_state = %{messages: []}
-      {:ok, %{}, Map.put(state, :session_state, session_state)}
+      response = %NewResponse{}
+      {:ok, response, Map.put(state, :session_state, session_state)}
     end
 
-    def handle_prompt(params, state) do
+    def handle_prompt(request, state) do
       # Fallback handler
-      handle_session_prompt(params, state)
+      handle_session_prompt(request, state)
     end
 
-    def handle_session_prompt(params, state) do
+    def handle_session_prompt(_request, state) do
       # Simulate processing and return response
-      content = params["content"]
-
-      response = %{
-        "stop_reason" => "done",
-        "content" => "Processed: #{content}"
+      # Note: In a real agent, you would send session/update notifications
+      # with the actual content. PromptResponse only contains stop_reason.
+      response = %PromptResponse{
+        stop_reason: "done"
       }
 
       {:ok, response, state}
     end
 
-    def handle_session_cancel(_params, state) do
+    def handle_session_cancel(_notification, state) do
       {:noreply, state}
     end
 
-    def handle_cancel(_params, state) do
+    def handle_cancel(_notification, state) do
       {:noreply, state}
     end
 
-    def handle_load_session(_params, state) do
-      {:error, %{"code" => -32_001, "message" => "Session not found"}, state}
+    def handle_load_session(_request, state) do
+      {:error, %{code: -32_001, message: "Session not found"}, state}
     end
   end
 
   defmodule TestClient do
     @behaviour ACPex.Client
 
+    alias ACPex.Schema.Client.{FsReadTextFileResponse, FsWriteTextFileResponse}
+    alias ACPex.Schema.Client.Terminal.{CreateResponse, OutputResponse}
+    alias ACPex.Schema.Client.Terminal.{WaitForExitResponse, KillResponse, ReleaseResponse}
+
     def init(args) do
       test_pid = Keyword.fetch!(args, :test_pid)
       {:ok, %{test_pid: test_pid, files: %{"/test.txt" => "test content"}}}
     end
 
-    def handle_session_update(params, state) do
-      send(state.test_pid, {:session_update, params})
+    def handle_session_update(notification, state) do
+      send(state.test_pid, {:session_update, notification})
       {:noreply, state}
     end
 
-    def handle_fs_read_text_file(%{"path" => path}, state) do
-      case Map.get(state.files, path) do
+    def handle_fs_read_text_file(request, state) do
+      case Map.get(state.files, request.path) do
         nil ->
-          {:error, %{"code" => -32_001, "message" => "File not found"}, state}
+          {:error, %{code: -32_001, message: "File not found"}, state}
 
         content ->
-          {:ok, %{"content" => content}, state}
+          response = %FsReadTextFileResponse{content: content}
+          {:ok, response, state}
       end
     end
 
-    def handle_fs_write_text_file(%{"path" => path, "content" => content}, state) do
-      new_files = Map.put(state.files, path, content)
-      {:ok, %{"bytes_written" => byte_size(content)}, %{state | files: new_files}}
+    def handle_fs_write_text_file(request, state) do
+      new_files = Map.put(state.files, request.path, request.content)
+      response = %FsWriteTextFileResponse{}
+      {:ok, response, %{state | files: new_files}}
     end
 
-    def handle_terminal_create(%{"command" => _command}, state) do
+    def handle_terminal_create(_request, state) do
       terminal_id = "term-" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
-      {:ok, %{"terminal_id" => terminal_id}, state}
+      response = %CreateResponse{terminal_id: terminal_id}
+      {:ok, response, state}
     end
 
-    def handle_terminal_output(%{"terminal_id" => _id}, state) do
-      {:ok, %{"output" => "command output"}, state}
+    def handle_terminal_output(_request, state) do
+      response = %OutputResponse{output: "command output"}
+      {:ok, response, state}
     end
 
-    def handle_terminal_wait_for_exit(%{"terminal_id" => _id}, state) do
-      {:ok, %{"exit_code" => 0}, state}
+    def handle_terminal_wait_for_exit(_request, state) do
+      response = %WaitForExitResponse{exit_code: 0}
+      {:ok, response, state}
     end
 
-    def handle_terminal_kill(%{"terminal_id" => _id}, state) do
-      {:ok, %{}, state}
+    def handle_terminal_kill(_request, state) do
+      response = %KillResponse{}
+      {:ok, response, state}
     end
 
-    def handle_terminal_release(%{"terminal_id" => _id}, state) do
-      {:ok, %{}, state}
+    def handle_terminal_release(_request, state) do
+      response = %ReleaseResponse{}
+      {:ok, response, state}
     end
   end
 
@@ -153,15 +172,15 @@ defmodule ACPex.IntegrationTest do
       init_response = parse_response(init_response_payload)
 
       assert init_response["id"] == 1
-      assert init_response["result"]["protocol_version"] == "1.0"
-      assert init_response["result"]["agent_info"]["name"] == "TestAgent"
+      assert init_response["result"]["protocolVersion"] == 1
+      assert init_response["result"]["_meta"]["name"] == "TestAgent"
 
       # Step 2: Authenticate
       auth_req = %{
         "jsonrpc" => "2.0",
         "id" => 2,
         "method" => "authenticate",
-        "params" => %{"token" => "valid_token"}
+        "params" => %{"methodId" => "token"}
       }
 
       send(agent_conn, {:message, auth_req})
@@ -184,7 +203,7 @@ defmodule ACPex.IntegrationTest do
       session_response = parse_response(session_response_payload)
 
       assert session_response["id"] == 3
-      session_id = session_response["result"]["session_id"]
+      session_id = session_response["result"]["sessionId"]
       assert is_binary(session_id)
 
       # Step 4: Send prompt
@@ -193,8 +212,8 @@ defmodule ACPex.IntegrationTest do
         "id" => 4,
         "method" => "session/prompt",
         "params" => %{
-          "session_id" => session_id,
-          "content" => "Hello, agent!"
+          "sessionId" => session_id,
+          "prompt" => [%{"type" => "text", "text" => "Hello, agent!"}]
         }
       }
 
@@ -203,8 +222,7 @@ defmodule ACPex.IntegrationTest do
       prompt_response = parse_response(prompt_response_payload)
 
       assert prompt_response["id"] == 4
-      assert prompt_response["result"]["stop_reason"] == "done"
-      assert prompt_response["result"]["content"] == "Processed: Hello, agent!"
+      assert prompt_response["result"]["stopReason"] == "done"
     end
 
     test "authentication failure returns error" do
@@ -222,7 +240,7 @@ defmodule ACPex.IntegrationTest do
         "jsonrpc" => "2.0",
         "id" => 1,
         "method" => "authenticate",
-        "params" => %{"token" => "invalid_token"}
+        "params" => %{"methodId" => "invalid_method"}
       }
 
       send(agent_conn, {:message, auth_req})
@@ -231,7 +249,7 @@ defmodule ACPex.IntegrationTest do
 
       assert response["id"] == 1
       assert response["error"]["code"] == -32_000
-      assert response["error"]["message"] == "Invalid token"
+      assert response["error"]["message"] == "Invalid authentication method"
     end
 
     @tag capture_log: true
@@ -251,8 +269,8 @@ defmodule ACPex.IntegrationTest do
         "id" => 1,
         "method" => "session/prompt",
         "params" => %{
-          "session_id" => "non-existent-session",
-          "content" => "Hello"
+          "sessionId" => "non-existent-session",
+          "prompt" => [%{"type" => "text", "text" => "Hello"}]
         }
       }
 
@@ -318,7 +336,7 @@ defmodule ACPex.IntegrationTest do
       create_response = parse_response(create_response_payload)
 
       assert create_response["id"] == 200
-      terminal_id = create_response["result"]["terminal_id"]
+      terminal_id = create_response["result"]["terminalId"]
       assert String.starts_with?(terminal_id, "term-")
 
       # Agent reads terminal output
@@ -326,7 +344,7 @@ defmodule ACPex.IntegrationTest do
         "jsonrpc" => "2.0",
         "id" => 201,
         "method" => "terminal/output",
-        "params" => %{"terminal_id" => terminal_id}
+        "params" => %{"terminalId" => terminal_id}
       }
 
       send(client_conn, {:message, output_req})
@@ -391,7 +409,7 @@ defmodule ACPex.IntegrationTest do
       send(agent_conn, {:message, new_session_req1})
       assert_receive {:transport_data, session1_payload}
       session1_response = parse_response(session1_payload)
-      session_id1 = session1_response["result"]["session_id"]
+      session_id1 = session1_response["result"]["sessionId"]
 
       # Create second session
       new_session_req2 = %{
@@ -404,7 +422,7 @@ defmodule ACPex.IntegrationTest do
       send(agent_conn, {:message, new_session_req2})
       assert_receive {:transport_data, session2_payload}
       session2_response = parse_response(session2_payload)
-      session_id2 = session2_response["result"]["session_id"]
+      session_id2 = session2_response["result"]["sessionId"]
 
       # Verify different session IDs
       assert session_id1 != session_id2
@@ -414,14 +432,20 @@ defmodule ACPex.IntegrationTest do
         "jsonrpc" => "2.0",
         "id" => 12,
         "method" => "session/prompt",
-        "params" => %{"session_id" => session_id1, "content" => "Session 1"}
+        "params" => %{
+          "sessionId" => session_id1,
+          "prompt" => [%{"type" => "text", "text" => "Session 1"}]
+        }
       }
 
       prompt_req2 = %{
         "jsonrpc" => "2.0",
         "id" => 13,
         "method" => "session/prompt",
-        "params" => %{"session_id" => session_id2, "content" => "Session 2"}
+        "params" => %{
+          "sessionId" => session_id2,
+          "prompt" => [%{"type" => "text", "text" => "Session 2"}]
+        }
       }
 
       send(agent_conn, {:message, prompt_req1})
@@ -444,8 +468,8 @@ defmodule ACPex.IntegrationTest do
       prompt1_response = responses_by_id[12]
       prompt2_response = responses_by_id[13]
 
-      assert prompt1_response["result"]["content"] =~ "Session 1"
-      assert prompt2_response["result"]["content"] =~ "Session 2"
+      assert prompt1_response["result"]["stopReason"] == "done"
+      assert prompt2_response["result"]["stopReason"] == "done"
     end
   end
 

@@ -79,56 +79,62 @@ defmodule ACPex.E2ETest do
       {:noreply, new_state}
     end
 
-    def handle_fs_read_text_file(%{"path" => path}, state) do
+    def handle_fs_read_text_file(request, state) do
       # Log the operation
-      new_state = %{state | file_operations: [{:read, path} | state.file_operations]}
-      send(state.test_pid, {:file_read, path})
+      new_state = %{state | file_operations: [{:read, request.path} | state.file_operations]}
+      send(state.test_pid, {:file_read, request.path})
 
       # Try to read the file
-      case File.read(path) do
+      case File.read(request.path) do
         {:ok, content} ->
-          {:ok, %{"content" => content}, new_state}
+          response = %ACPex.Schema.Client.FsReadTextFileResponse{content: content}
+          {:ok, response, new_state}
 
         {:error, reason} ->
           error = %{
-            "code" => -32_001,
-            "message" => "Failed to read file: #{inspect(reason)}"
+            code: -32_001,
+            message: "Failed to read file: #{inspect(reason)}"
           }
 
           {:error, error, new_state}
       end
     end
 
-    def handle_fs_write_text_file(%{"path" => path, "content" => content}, state) do
+    def handle_fs_write_text_file(request, state) do
       # Log the operation
-      new_state = %{state | file_operations: [{:write, path, content} | state.file_operations]}
-      send(state.test_pid, {:file_write, path, content})
+      new_state = %{
+        state
+        | file_operations: [{:write, request.path, request.content} | state.file_operations]
+      }
+
+      send(state.test_pid, {:file_write, request.path, request.content})
 
       # Ensure directory exists
-      path |> Path.dirname() |> File.mkdir_p!()
+      request.path |> Path.dirname() |> File.mkdir_p!()
 
       # Write the file
-      case File.write(path, content) do
+      case File.write(request.path, request.content) do
         :ok ->
-          {:ok, %{"bytes_written" => byte_size(content)}, new_state}
+          response = %ACPex.Schema.Client.FsWriteTextFileResponse{}
+          {:ok, response, new_state}
 
         {:error, reason} ->
           error = %{
-            "code" => -32_002,
-            "message" => "Failed to write file: #{inspect(reason)}"
+            code: -32_002,
+            message: "Failed to write file: #{inspect(reason)}"
           }
 
           {:error, error, new_state}
       end
     end
 
-    def handle_terminal_create(%{"command" => command} = params, state) do
+    def handle_terminal_create(request, state) do
       terminal_id = "term-" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
 
       terminal_info = %{
         id: terminal_id,
-        command: command,
-        cwd: params["cwd"] || @test_dir
+        command: request.command,
+        cwd: request.cwd || @test_dir
       }
 
       new_terminals = Map.put(state.terminals, terminal_id, terminal_info)
@@ -136,18 +142,21 @@ defmodule ACPex.E2ETest do
       new_state = %{
         state
         | terminals: new_terminals,
-          terminal_operations: [{:create, terminal_id, command} | state.terminal_operations]
+          terminal_operations: [
+            {:create, terminal_id, request.command} | state.terminal_operations
+          ]
       }
 
-      send(state.test_pid, {:terminal_create, terminal_id, command})
+      send(state.test_pid, {:terminal_create, terminal_id, request.command})
 
-      {:ok, %{"terminal_id" => terminal_id}, new_state}
+      response = %ACPex.Schema.Client.Terminal.CreateResponse{terminal_id: terminal_id}
+      {:ok, response, new_state}
     end
 
-    def handle_terminal_output(%{"terminal_id" => terminal_id}, state) do
-      case Map.get(state.terminals, terminal_id) do
+    def handle_terminal_output(request, state) do
+      case Map.get(state.terminals, request.terminal_id) do
         nil ->
-          error = %{"code" => -32_003, "message" => "Terminal not found"}
+          error = %{code: -32_003, message: "Terminal not found"}
           {:error, error, state}
 
         terminal ->
@@ -162,29 +171,38 @@ defmodule ACPex.E2ETest do
               _ -> {"Error executing command", 1}
             end
 
-          send(state.test_pid, {:terminal_output, terminal_id, output, exit_code})
+          send(state.test_pid, {:terminal_output, request.terminal_id, output, exit_code})
 
-          {:ok, %{"output" => output, "exit_code" => exit_code}, state}
+          response = %ACPex.Schema.Client.Terminal.OutputResponse{
+            output: output,
+            truncated: false,
+            exit_status: %{exitCode: exit_code}
+          }
+
+          {:ok, response, state}
       end
     end
 
-    def handle_terminal_wait_for_exit(%{"terminal_id" => terminal_id}, state) do
-      if Map.has_key?(state.terminals, terminal_id) do
-        {:ok, %{"exit_code" => 0}, state}
+    def handle_terminal_wait_for_exit(request, state) do
+      if Map.has_key?(state.terminals, request.terminal_id) do
+        response = %ACPex.Schema.Client.Terminal.WaitForExitResponse{exit_code: 0}
+        {:ok, response, state}
       else
-        error = %{"code" => -32_003, "message" => "Terminal not found"}
+        error = %{code: -32_003, message: "Terminal not found"}
         {:error, error, state}
       end
     end
 
-    def handle_terminal_kill(%{"terminal_id" => terminal_id}, state) do
-      new_terminals = Map.delete(state.terminals, terminal_id)
-      {:ok, %{}, %{state | terminals: new_terminals}}
+    def handle_terminal_kill(request, state) do
+      new_terminals = Map.delete(state.terminals, request.terminal_id)
+      response = %ACPex.Schema.Client.Terminal.KillResponse{}
+      {:ok, response, %{state | terminals: new_terminals}}
     end
 
-    def handle_terminal_release(%{"terminal_id" => terminal_id}, state) do
-      new_terminals = Map.delete(state.terminals, terminal_id)
-      {:ok, %{}, %{state | terminals: new_terminals}}
+    def handle_terminal_release(request, state) do
+      new_terminals = Map.delete(state.terminals, request.terminal_id)
+      response = %ACPex.Schema.Client.Terminal.ReleaseResponse{}
+      {:ok, response, %{state | terminals: new_terminals}}
     end
   end
 
@@ -446,8 +464,9 @@ defmodule ACPex.E2ETest do
 
       # Should have received at least one update
       assert_received {:session_update, update}
-      assert is_map(update)
-      assert Map.has_key?(update, "update") or Map.has_key?(update, "content")
+      # update is now an UpdateNotification struct with an `update` field
+      assert %ACPex.Schema.Session.UpdateNotification{} = update
+      assert is_map(update.update)
     end
   end
 

@@ -49,6 +49,15 @@ defmodule ACPex.Protocol.Session do
   use GenServer
   require Logger
 
+  alias ACPex.Schema.Codec
+  alias ACPex.Schema.Session.NewRequest
+  alias ACPex.Schema.Session.PromptRequest
+  alias ACPex.Schema.Session.CancelNotification
+  alias ACPex.Schema.Session.UpdateNotification
+  alias ACPex.Schema.Client.FsReadTextFileRequest
+  alias ACPex.Schema.Client.FsWriteTextFileRequest
+  alias ACPex.Schema.Client.Terminal
+
   defstruct handler_module: nil,
             handler_state: nil,
             session_id: nil,
@@ -115,16 +124,24 @@ defmodule ACPex.Protocol.Session do
   def handle_info({:request, connection_pid, %{"method" => "session/new"} = request}, state) do
     Logger.debug("Session #{state.session_id}: Received session/new request")
 
+    # Decode params to NewRequest struct
+    request_struct = Codec.decode_from_map!(request["params"] || %{}, NewRequest)
+
     # This is the first request this session will see.
     # We need to call the user's callback.
-    case state.handler_module.handle_new_session(request["params"], state.handler_state) do
-      {:ok, response_params, new_handler_state} ->
+    case state.handler_module.handle_new_session(request_struct, state.handler_state) do
+      {:ok, response_struct, new_handler_state} ->
         Logger.debug("Session #{state.session_id}: Notifying connection of session start")
         # Tell the connection about us so it can route future messages
         send(connection_pid, {:session_started, state.session_id, self()})
 
-        response =
-          build_response(request["id"], Map.put(response_params, "session_id", state.session_id))
+        # Encode struct response back to map and add session_id
+        response_map =
+          response_struct
+          |> Codec.encode_to_map!()
+          |> Map.put("sessionId", state.session_id)
+
+        response = build_response(request["id"], response_map)
 
         Logger.debug("Session #{state.session_id}: Sending session/new response")
         send_message(state.transport_pid, response)
@@ -153,10 +170,15 @@ defmodule ACPex.Protocol.Session do
         "Session #{state.session_id}: Calling handler #{state.handler_module}.#{callback}/2"
       )
 
-      case apply(state.handler_module, callback, [params, state.handler_state]) do
-        {:ok, result, new_handler_state} ->
+      # Decode params to appropriate struct based on method
+      request_struct = decode_session_request(method, params)
+
+      case apply(state.handler_module, callback, [request_struct, state.handler_state]) do
+        {:ok, result_struct, new_handler_state} ->
           Logger.debug("Session #{state.session_id}: Handler returned success, sending response")
-          response = build_response(id, result)
+          # Encode struct response back to map for JSON-RPC transport
+          result_map = Codec.encode_to_map!(result_struct)
+          response = build_response(id, result_map)
           send_message(state.transport_pid, response)
           {:noreply, %{state | handler_state: new_handler_state}}
 
@@ -202,8 +224,11 @@ defmodule ACPex.Protocol.Session do
         "Session #{state.session_id}: Calling notification handler #{state.handler_module}.#{callback}/2"
       )
 
+      # Decode params to appropriate struct based on method
+      notification_struct = decode_session_request(method, params)
+
       {:noreply, new_handler_state} =
-        apply(state.handler_module, callback, [params, state.handler_state])
+        apply(state.handler_module, callback, [notification_struct, state.handler_state])
 
       {:noreply, %{state | handler_state: new_handler_state}}
     else
@@ -217,6 +242,51 @@ defmodule ACPex.Protocol.Session do
   end
 
   # Private Helpers
+
+  # Decode session-level request/notification params to appropriate struct
+  defp decode_session_request("session/prompt", params) do
+    Codec.decode_from_map!(params, PromptRequest)
+  end
+
+  defp decode_session_request("session/cancel", params) do
+    Codec.decode_from_map!(params, CancelNotification)
+  end
+
+  defp decode_session_request("session/update", params) do
+    Codec.decode_from_map!(params, UpdateNotification)
+  end
+
+  # Client request methods (agent → client)
+  defp decode_session_request("fs/read_text_file", params) do
+    Codec.decode_from_map!(params, FsReadTextFileRequest)
+  end
+
+  defp decode_session_request("fs/write_text_file", params) do
+    Codec.decode_from_map!(params, FsWriteTextFileRequest)
+  end
+
+  defp decode_session_request("terminal/create", params) do
+    Codec.decode_from_map!(params, Terminal.CreateRequest)
+  end
+
+  defp decode_session_request("terminal/output", params) do
+    Codec.decode_from_map!(params, Terminal.OutputRequest)
+  end
+
+  defp decode_session_request("terminal/wait_for_exit", params) do
+    Codec.decode_from_map!(params, Terminal.WaitForExitRequest)
+  end
+
+  defp decode_session_request("terminal/kill", params) do
+    Codec.decode_from_map!(params, Terminal.KillRequest)
+  end
+
+  defp decode_session_request("terminal/release", params) do
+    Codec.decode_from_map!(params, Terminal.ReleaseRequest)
+  end
+
+  # For any unknown session-level methods, pass through as-is
+  defp decode_session_request(_method, params), do: params
 
   defp method_to_callback(method) do
     ("handle_" <> String.replace(method, "/", "_"))

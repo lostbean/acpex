@@ -9,48 +9,84 @@ defmodule ACPex.Protocol.SessionTest do
   defmodule TestHandler do
     @behaviour ACPex.Agent
 
+    alias ACPex.Schema.Connection.{InitializeResponse, AuthenticateResponse}
+    alias ACPex.Schema.Session.{NewResponse, PromptResponse}
+
     def init(_args), do: {:ok, %{}}
-    def handle_new_session(params, state), do: {:ok, params, state}
-    def handle_session_prompt(_params, state), do: {:ok, %{"content" => "response"}, state}
-    def handle_initialize(params, state), do: {:ok, params, state}
-    def handle_load_session(params, state), do: {:ok, params, state}
-    def handle_prompt(params, state), do: {:ok, params, state}
+
+    def handle_new_session(_params, state) do
+      {:ok, %NewResponse{}, state}
+    end
+
+    def handle_session_prompt(_params, state) do
+      {:ok, %PromptResponse{stop_reason: "done"}, state}
+    end
+
+    def handle_initialize(_params, state) do
+      {:ok, %InitializeResponse{protocol_version: 1, agent_capabilities: %{}}, state}
+    end
+
+    def handle_load_session(_params, state) do
+      {:error, %{code: -32_001, message: "Not supported"}, state}
+    end
+
+    def handle_prompt(_params, state) do
+      {:ok, %PromptResponse{stop_reason: "done"}, state}
+    end
+
     def handle_cancel(_params, state), do: {:noreply, state}
-    def handle_authenticate(params, state), do: {:ok, params, state}
+
+    def handle_authenticate(_params, state) do
+      {:ok, %AuthenticateResponse{authenticated: true}, state}
+    end
   end
 
   defmodule TestClientHandler do
     @behaviour ACPex.Client
 
+    alias ACPex.Schema.Client.{FsReadTextFileResponse, FsWriteTextFileResponse}
+    alias ACPex.Schema.Client.Terminal
+
     def init(_args), do: {:ok, %{}}
     def handle_session_update(_params, state), do: {:noreply, state}
 
-    def handle_fs_read_text_file(%{"path" => path}, state) do
-      {:ok, %{"content" => "file content from #{path}"}, state}
+    def handle_fs_read_text_file(request, state) do
+      response = %FsReadTextFileResponse{
+        content: "file content from #{request.path}"
+      }
+
+      {:ok, response, state}
     end
 
-    def handle_fs_write_text_file(%{"path" => path, "content" => content}, state) do
-      {:ok, %{"bytes_written" => byte_size(content), "path" => path}, state}
+    def handle_fs_write_text_file(_request, state) do
+      {:ok, %FsWriteTextFileResponse{}, state}
     end
 
-    def handle_terminal_create(%{"command" => _cmd}, state) do
-      {:ok, %{"terminal_id" => "term-123"}, state}
+    def handle_terminal_create(_request, state) do
+      response = %Terminal.CreateResponse{terminal_id: "term-123"}
+      {:ok, response, state}
     end
 
-    def handle_terminal_output(%{"terminal_id" => _id}, state) do
-      {:ok, %{"output" => "command output"}, state}
+    def handle_terminal_output(_request, state) do
+      response = %Terminal.OutputResponse{
+        output: "command output",
+        truncated: false
+      }
+
+      {:ok, response, state}
     end
 
-    def handle_terminal_wait_for_exit(%{"terminal_id" => _id}, state) do
-      {:ok, %{"exit_code" => 0}, state}
+    def handle_terminal_wait_for_exit(_request, state) do
+      response = %Terminal.WaitForExitResponse{exit_code: 0}
+      {:ok, response, state}
     end
 
-    def handle_terminal_kill(%{"terminal_id" => _id}, state) do
-      {:ok, %{}, state}
+    def handle_terminal_kill(_request, state) do
+      {:ok, %Terminal.KillResponse{}, state}
     end
 
-    def handle_terminal_release(%{"terminal_id" => _id}, state) do
-      {:ok, %{}, state}
+    def handle_terminal_release(_request, state) do
+      {:ok, %Terminal.ReleaseResponse{}, state}
     end
   end
 
@@ -106,7 +142,7 @@ defmodule ACPex.Protocol.SessionTest do
       assert_receive {:transport_data, response_payload}
       response = parse_response(response_payload)
       assert response["id"] == "new-session-req"
-      assert response["result"]["session_id"] == session_id
+      assert response["result"]["sessionId"] == session_id
     end
   end
 
@@ -116,7 +152,10 @@ defmodule ACPex.Protocol.SessionTest do
         "jsonrpc" => "2.0",
         "id" => "request-id-1",
         "method" => "session/prompt",
-        "params" => %{"content" => "Hello"}
+        "params" => %{
+          "sessionId" => "test-session-id",
+          "prompt" => [%{"type" => "text", "text" => "Hello"}]
+        }
       }
 
       send(session, {:forward, request})
@@ -125,7 +164,7 @@ defmodule ACPex.Protocol.SessionTest do
       response = parse_response(response_payload)
 
       assert response["id"] == "request-id-1"
-      assert response["result"] == %{"content" => "response"}
+      assert response["result"]["stopReason"] == "done"
     end
   end
 
@@ -189,8 +228,8 @@ defmodule ACPex.Protocol.SessionTest do
       response = parse_response(response_payload)
 
       assert response["id"] == "write-req"
-      assert response["result"]["bytes_written"] == 11
-      assert response["result"]["path"] == "/tmp/output.txt"
+      # FsWriteTextFileResponse is empty
+      assert response["result"] == %{}
     end
   end
 
@@ -222,7 +261,7 @@ defmodule ACPex.Protocol.SessionTest do
       response = parse_response(response_payload)
 
       assert response["id"] == "term-create"
-      assert response["result"]["terminal_id"] == "term-123"
+      assert response["result"]["terminalId"] == "term-123"
     end
 
     test "handles terminal/output request", %{client_session: session} do
@@ -256,7 +295,7 @@ defmodule ACPex.Protocol.SessionTest do
       response = parse_response(response_payload)
 
       assert response["id"] == "term-wait"
-      assert response["result"]["exit_code"] == 0
+      assert response["result"]["exitCode"] == 0
     end
 
     test "handles terminal/kill request", %{client_session: session} do

@@ -30,7 +30,6 @@ defmodule ACPex.MixProject do
   defp deps do
     [
       {:jason, "~> 1.4"},
-      {:inflex, "~> 2.0"},
       {:ecto, "~> 3.11"},
       {:ex_doc, "~> 0.30", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
@@ -68,7 +67,7 @@ defmodule ACPex.MixProject do
           ACPex.Protocol.Session,
           ACPex.Protocol.SessionSupervisor
         ],
-        "Data Types": [ACPex.Schema, ACPex.Json],
+        Schema: [ACPex.Schema.Codec],
         Transport: [ACPex.Transport.Ndjson],
         Application: [ACPex.Application]
       ]

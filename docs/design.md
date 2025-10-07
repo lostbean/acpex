@@ -1,11 +1,11 @@
-# **Building acp\_ex: An Architectural Blueprint for an Elixir Agent Client Protocol Library**
+# **Building acp_ex: An Architectural Blueprint for an Elixir Agent Client Protocol Library**
 
-## **Section 1: Executive Summary: A Blueprint for acp\_ex**
+## **Section 1: Executive Summary: A Blueprint for acp_ex**
 
 ### **1.1. Report Mandate and Purpose**
 
 This report presents a comprehensive architectural blueprint for the development
-of acp\_ex, an idiomatic Elixir library for the Agent Client Protocol (ACP). The
+of acp_ex, an idiomatic Elixir library for the Agent Client Protocol (ACP). The
 primary objective is to provide a detailed technical guide that enables Elixir
 developers to build both ACP-compliant Artificial Intelligence (AI) agents and
 client-side integrations, such as plugins for code editors. The design detailed
@@ -27,13 +27,13 @@ and any AI coding agent. In much the same way that the Language Server Protocol
 aims to unbundle AI assistance, fostering a "Bring Your Own Agent" environment.
 By establishing a universal interface, ACP allows developers to mix and match
 their preferred editors and AI agents, promoting innovation and
-interoperability. The development of acp\_ex is therefore a critical step to
+interoperability. The development of acp_ex is therefore a critical step to
 ensure the Elixir ecosystem can fully participate in and contribute to this next
 generation of development tools.
 
 ### **1.3. Proposed Architecture at a Glance**
 
-The proposed architecture for acp\_ex is fundamentally rooted in the principles
+The proposed architecture for acp_ex is fundamentally rooted in the principles
 of OTP (Open Telecom Platform), leveraging Elixir's core strengths in
 concurrency, state management, and fault tolerance. The design is symmetric and
 behaviour-based, reflecting the bidirectional nature of the protocol itself. The
@@ -48,18 +48,18 @@ the ACP specification.
 ### **1.4. Key Recommendations and Roadmap**
 
 This report puts forth several key recommendations that form the foundation of
-the acp\_ex library. First, it addresses and resolves a critical ambiguity in
-the agent protocol landscape, clearly distinguishing the target Zed Industries
-ACP from other similarly named protocols. Second, it advocates for the adoption
-of a symmetric API design, inspired by the official Rust reference
-implementation, which is realized in Elixir through the use of OTP behaviours.
-This provides a clear and powerful contract for developers building either
-agents or clients. Third, it details a layered OTP process model that cleanly
-separates transport, connection, and session logic. Finally, the report outlines
-a comprehensive strategy for testing, documentation, and community engagement.
-The successful implementation of this blueprint will provide the Elixir
-community with a powerful tool, fostering a new wave of interoperable AI-powered
-development experiences.
+the acp_ex library. First, it addresses and resolves a critical ambiguity in the
+agent protocol landscape, clearly distinguishing the target Zed Industries ACP
+from other similarly named protocols. Second, it advocates for the adoption of a
+symmetric API design, inspired by the official Rust reference implementation,
+which is realized in Elixir through the use of OTP behaviours. This provides a
+clear and powerful contract for developers building either agents or clients.
+Third, it details a layered OTP process model that cleanly separates transport,
+connection, and session logic. Finally, the report outlines a comprehensive
+strategy for testing, documentation, and community engagement. The successful
+implementation of this blueprint will provide the Elixir community with a
+powerful tool, fostering a new wave of interoperable AI-powered development
+experiences.
 
 ## **Section 2: Deconstructing the Agent Client Protocol (ACP)**
 
@@ -74,7 +74,7 @@ architectural design.
 
 The term "Agent Protocol" has been applied to several distinct initiatives,
 creating a potential for significant confusion. It is therefore critical to
-begin by unambiguously identifying the target protocol for the acp\_ex library.
+begin by unambiguously identifying the target protocol for the acp_ex library.
 The focus of this report is exclusively on the **Agent Client Protocol (ACP)**
 as specified by Zed Industries and documented at agentclientprotocol.com. This
 protocol is specifically designed to standardize communication between code
@@ -155,7 +155,7 @@ distinct phases :
    does this by sending either a session/new request to create a new, clean
    conversation context, or a session/load request to resume a previous session
    if the agent advertised this capability. The agent responds with a unique
-   session\_id that will be used in all subsequent messages for that
+   session_id that will be used in all subsequent messages for that
    conversation.
 3. **Prompt Turn:** This is the core interactive loop of the protocol. A "turn"
    begins when the client sends a session/prompt request to the agent,
@@ -172,13 +172,13 @@ distinct phases :
      task.
 
 If the agent needs to perform a privileged action, it will pause and send a
-request back to the client, such as session/request\_permission or
-fs/read\_text\_file. The client is responsible for handling this request (e.g.,
-by showing a confirmation dialog to the user) and sending a response back to the
+request back to the client, such as session/request_permission or
+fs/read_text_file. The client is responsible for handling this request (e.g., by
+showing a confirmation dialog to the user) and sending a response back to the
 agent. At any point, the client can send a session/cancel notification to
 interrupt the agent's work. The turn concludes when the agent has finished its
 work and sends the final response to the original session/prompt request, which
-includes a stop\_reason such as done or cancelled.
+includes a stop_reason such as done or cancelled.
 
 ### **2.4. Strategic Dependencies: The Model Context Protocol (MCP)**
 
@@ -199,10 +199,10 @@ calls, tool results, code diffs, and resource links within ACP are intentionally
 designed to be compatible with their MCP counterparts. This ensures seamless
 integration and allows an agent to pass information from its MCP tool
 interactions directly into the session/update notifications it sends back to the
-editor via ACP. Therefore, a well-designed acp\_ex library must define its
-schema for these shared concepts with an eye toward future compatibility with a
-potential mcp\_ex library, ensuring the two can work together harmoniously
-within the broader Elixir AI ecosystem.
+editor via ACP. Therefore, a well-designed acp_ex library must define its schema
+for these shared concepts with an eye toward future compatibility with a
+potential mcp_ex library, ensuring the two can work together harmoniously within
+the broader Elixir AI ecosystem.
 
 ## **Section 3: Architectural Vision: An Idiomatic Elixir Implementation with OTP**
 
@@ -231,7 +231,7 @@ by the Agent Client Protocol.
 - **Concurrency:** The protocol specification allows for multiple concurrent
   sessions per connection. The OTP actor model, where each process is a
   lightweight, isolated actor, is the ideal solution for managing this
-  concurrency. In the proposed acp\_ex architecture, each session (session\_id)
+  concurrency. In the proposed acp_ex architecture, each session (session_id)
   will be managed by its own dedicated GenServer process. This natural mapping
   provides concurrency out of the box, simplifies the logic by isolating the
   state of each session, and ensures that a computationally intensive task in
@@ -246,7 +246,7 @@ by the Agent Client Protocol.
   process does not bring down the entire agent connection, providing the
   self-healing and resilient properties for which Elixir and OTP are renowned.
 
-### **3.2. The acp\_ex Supervision Tree**
+### **3.2. The acp_ex Supervision Tree**
 
 The logical, nested structure of the ACP—a connection contains multiple
 sessions, and each session processes a sequence of prompts—translates directly
@@ -267,37 +267,36 @@ ownership and fault isolation. The proposed supervision strategy is as follows:
    and monitoring the GenServer processes for all active sessions within that
    connection.
 5. **AcpEx.Session.GenServer:** The workhorse GenServer that manages the state
-   for a single conversation session, identified by its session\_id. It handles
+   for a single conversation session, identified by its session_id. It handles
    session/prompt, session/cancel, and other session-specific messages. For
    long-running prompts, it can spawn Task processes to perform the work
    asynchronously without blocking its own message loop.
 
 This architecture creates a clear mapping from the protocol's concepts to the
 library's components, as detailed in the table below. **Table 2: Mapping ACP
-Concepts to acp\_ex OTP Components**
+Concepts to acp_ex OTP Components**
 
-| ACP Concept                 | acp\_ex Component                                   | OTP Behaviour | Core Responsibility                                                     |
+| ACP Concept                 | acp_ex Component                                    | OTP Behaviour | Core Responsibility                                                     |
 | :-------------------------- | :-------------------------------------------------- | :------------ | :---------------------------------------------------------------------- |
 | Agent Subprocess Lifecycle  | AcpEx.Application                                   | Application   | Starts the top-level supervisor for the agent/client instance.          |
 | Agent-Client Connection     | AcpEx.Connection.GenServer                          | GenServer     | Handles initialize/authenticate, manages session supervisors.           |
-| Conversation Session        | AcpEx.Session.GenServer                             | GenServer     | Manages state for a single session\_id, handles prompt/cancel.          |
+| Conversation Session        | AcpEx.Session.GenServer                             | GenServer     | Manages state for a single session_id, handles prompt/cancel.           |
 | Long-running Prompt Turn    | Task (spawned by Session.GenServer)                 | Task          | Executes the agent's core logic asynchronously, preventing blocking.    |
 | Fault Tolerance & Lifecycle | AcpEx.ConnectionSupervisor, AcpEx.SessionSupervisor | Supervisor    | Monitors and restarts failed processes according to defined strategies. |
 
-### **3.3. The Transport Layer: A Dedicated Ndjson Stream Process**
+### **3.3. The Transport Layer: A Dedicated Ndjson Stream Process** ✅ **IMPLEMENTED**
 
 To maintain a clean separation of concerns, the low-level logic of reading from
-stdin and writing to stdout should be isolated from the high-level application
-logic of the GenServers. This will be achieved by creating a dedicated transport
-module, AcpEx.Transport.Ndjson. This module will be responsible for the raw I/O
-operations using the newline-delimited JSON (ndjson) format. It will be
-implemented as a GenServer that manages bidirectional streaming communication
-via the Exile library, which provides robust external process management with
-automatic back-pressure and memory safety. Its responsibilities will include:
+stdin and writing to stdout is isolated from the high-level application logic of
+the GenServers. ACPex implements a dedicated transport module,
+`ACPex.Transport.Ndjson`, which is responsible for the raw I/O operations using
+the newline-delimited JSON (ndjson) format. It is implemented as a GenServer
+that manages bidirectional streaming communication via native Erlang Ports. Its
+responsibilities include:
 
 - Continuously reading data from the input stream, buffering until a complete
-  line is received.
-- Passing each complete line to a JSON parser (e.g., Jason).
+  line is received (line-buffered I/O).
+- Passing each complete line to a JSON parser (Jason).
 - Upon successful parsing, dispatching the decoded JSON-RPC message to the
   appropriate Connection.GenServer or Session.GenServer for processing.
 - Receiving outbound messages from the application GenServers.
@@ -305,20 +304,19 @@ automatic back-pressure and memory safety. Its responsibilities will include:
 - Writing the resulting JSON strings to the output stream, followed by a newline
   character (`\n`), as per the ndjson specification.
 
-The use of the Exile library provides several critical advantages over
-traditional Erlang Ports:
+The use of native Erlang Ports provides several advantages:
 
-- **Automatic back-pressure:** Prevents unbounded memory growth when processing
-  large data streams, ensuring the system remains stable under heavy load.
+- **Line-buffered I/O:** Automatic message framing - the Port system handles
+  buffering and splits input into complete lines.
 - **Non-blocking I/O:** Enables efficient asynchronous communication without
   blocking the GenServer message loop.
 - **Process safety:** Automatically prevents zombie processes and handles
-  process cleanup correctly.
-- **Stream-based API:** Provides a natural fit for the streaming nature of
-  JSON-RPC communication over stdio.
+  process cleanup correctly when the Port terminates.
+- **Native integration:** Built into the BEAM VM with decades of production use
+  and optimization.
 
 This architectural choice decouples the core protocol logic from the transport
-mechanism. The Connection and Session GenServers can operate purely in terms of
+mechanism. The Connection and Session GenServers operate purely in terms of
 Elixir data structures, unaware of the underlying JSON serialization or I/O
 details. This not only simplifies their implementation but also makes the
 library more extensible, as it would be straightforward to add alternative
@@ -328,7 +326,7 @@ module that adheres to the same internal dispatching interface.
 ## **Section 4: Core Library Implementation: Modules, Data Structures, and APIs**
 
 With the high-level OTP architecture established, this section details the
-concrete implementation plan for the acp\_ex library. It covers the proposed
+concrete implementation plan for the acp_ex library. It covers the proposed
 project structure, the translation of the protocol schema into Elixir data
 structures, and the design of the public-facing API that developers will use to
 build agents and clients.
@@ -336,112 +334,182 @@ build agents and clients.
 ### **4.1. Project Structure and Dependencies**
 
 The library will follow the standard Elixir project structure, which can be
-scaffolded using the command $ mix new acp\_ex \--sup. This command creates a
-new Mix project with a skeleton for an OTP application and its top-level
-supervisor, aligning perfectly with the proposed architecture. The directory
-structure will be organized to promote clarity and separation of concerns:
+scaffolded using the command $ mix new acp_ex \--sup. This command creates a new
+Mix project with a skeleton for an OTP application and its top-level supervisor,
+aligning perfectly with the proposed architecture. The directory structure will
+be organized to promote clarity and separation of concerns:
 
-- lib/acp\_ex.ex: The main application module, responsible for starting the
+- lib/acp_ex.ex: The main application module, responsible for starting the
   top-level supervisor.
-- lib/acp\_ex/application.ex: The OTP Application behaviour implementation.
-- lib/acp\_ex/transport/ndjson.ex: The dedicated module for handling standard
-  I/O with newline-delimited JSON (ndjson) message framing via the Exile
-  library.
-- lib/acp\_ex/protocol/connection\_supervisor.ex: The supervisor for connection
+- lib/acp_ex/application.ex: The OTP Application behaviour implementation.
+- lib/acp_ex/transport/ndjson.ex: The dedicated module for handling standard I/O
+  with newline-delimited JSON (ndjson) message framing via the Exile library.
+- lib/acp_ex/protocol/connection_supervisor.ex: The supervisor for connection
   processes.
-- lib/acp\_ex/protocol/connection.ex: The GenServer implementation for managing
-  a single connection.
-- lib/acp\_ex/protocol/session\_supervisor.ex: The supervisor for session
+- lib/acp_ex/protocol/connection.ex: The GenServer implementation for managing a
+  single connection.
+- lib/acp_ex/protocol/session_supervisor.ex: The supervisor for session
   processes.
-- lib/acp\_ex/protocol/session.ex: The GenServer implementation for managing a
+- lib/acp_ex/protocol/session.ex: The GenServer implementation for managing a
   single session.
-- lib/acp\_ex/schema/: A directory containing modules that define Elixir structs
+- lib/acp_ex/schema/: A directory containing modules that define Elixir structs
   for every data type in the ACP JSON schema. For example,
-  lib/acp\_ex/schema/initialize\_request.ex.
-- lib/acp\_ex/agent.ex: The definition of the AcpEx.Agent behaviour.
-- lib/acp\_ex/client.ex: The definition of the AcpEx.Client behaviour.
+  lib/acp_ex/schema/initialize_request.ex.
+- lib/acp_ex/agent.ex: The definition of the AcpEx.Agent behaviour.
+- lib/acp_ex/client.ex: The definition of the AcpEx.Client behaviour.
 - test/: The directory for all ExUnit tests, mirroring the lib/ structure.
 
 The primary external dependency for the library will be a robust JSON parser.
 **Jason** is the recommended choice due to its high performance and its status
 as the de-facto standard in the Elixir community. For development and testing,
-adding a library like ex\_json\_schema could be beneficial for validating that
-all incoming and outgoing messages strictly adhere to the official schema.json.
+adding a library like ex_json_schema could be beneficial for validating that all
+incoming and outgoing messages strictly adhere to the official schema.json.
 
-### **4.2. Schema Definition: From JSON to Elixir Structs**
+### **4.2. Schema Definition: From JSON to Elixir Structs** ✅ **IMPLEMENTED**
 
 A cornerstone of a robust and maintainable protocol library is a strong, static
-type system. While Elixir is dynamically typed, it provides structs as a
-mechanism for defining structured, compile-time-checked data containers. Every
-object defined in the official ACP schema.json will be mapped to a corresponding
-Elixir defstruct. For example, the InitializeRequest would be defined in
-lib/acp\_ex/schema/initialize\_request.ex as:
-`defmodule AcpEx.Schema.InitializeRequest do`
-`@enforce_keys [:protocol_version]`
-`defstruct [:protocol_version, :client_info, :authentication_methods]` `end`
+type system. ACPex now implements a complete Ecto.Schema-based system for all
+protocol types. Every object defined in the official ACP schema.json has been
+mapped to a corresponding Ecto embedded schema. For example, the
+InitializeRequest is defined in
+lib/acpex/schema/connection/initialize_request.ex as:
 
-Using @enforce\_keys will ensure that any attempt to create a struct without the
-required fields will fail at compile time, catching bugs early. To handle the
-translation between Elixir's snake\_case atom keys and JSON's camelCase string
-keys, a custom Jason.Encoder protocol implementation will be created for a base
-struct or via a shared utility. This will allow for idiomatic Elixir code (e.g.,
-req.protocol\_version) while ensuring correct serialization for transport (e.g.,
-{"protocolVersion": "..."}). This approach provides the dual benefits of
-compile-time safety within the Elixir code and strict protocol compliance on the
-wire.
+```elixir
+defmodule ACPex.Schema.Connection.InitializeRequest do
+  use Ecto.Schema
+  import Ecto.Changeset
 
-### **4.3. The Symmetric API: AcpEx.Agent and AcpEx.Client Behaviours**
+  @primary_key false
+  embedded_schema do
+    field(:protocol_version, :integer, source: :protocolVersion)
+    field(:client_info, :map, source: :clientInfo)
+    field(:capabilities, :map)
+    field(:authentication_methods, {:array, :string}, source: :authenticationMethods)
+  end
 
-The most critical aspect of the library's public API is its design, which must
-be both powerful and intuitive for Elixir developers. The official Rust
-reference implementation provides an excellent architectural pattern: a
-symmetric design where a developer implements a specific trait (Agent or
-Client), and the library provides a connection object that exposes the API for
-the other side. This elegant pattern can be directly translated into Elixir
-using behaviours. This approach avoids the need for two separate libraries and
-provides a clear, formal contract for developers. A developer wishing to create
-an AI agent will implement the AcpEx.Agent behaviour, while a developer building
-an editor plugin will implement the AcpEx.Client behaviour.
+  def changeset(struct \\ %__MODULE__{}, params) do
+    struct
+    |> cast(params, [:protocol_version, :client_info, :capabilities, :authentication_methods])
+    |> validate_required([:protocol_version])
+  end
 
-#### **4.3.1. The @behaviour AcpEx.Agent**
+  defimpl Jason.Encoder do
+    def encode(value, opts) do
+      value
+      |> ACPex.Schema.Codec.encode_to_map!()
+      |> Jason.Encode.map(opts)
+    end
+  end
+end
+```
 
-This behaviour defines the set of callbacks that an agent developer must
-implement. The acp\_ex library will handle the underlying GenServer management
-and protocol communication, invoking these callbacks at the appropriate times.
-Key callbacks would include:
+The `:source` field option provides automatic mapping between Elixir's
+snake_case field names and JSON's camelCase keys. This eliminates the need for
+any manual conversion functions - the schema itself is the single source of
+truth for field name mappings. The `ACPex.Schema.Codec` module provides
+`encode_to_map!/1` and `decode_from_map!/2` functions that automatically handle
+the conversion using Ecto's built-in support for `:source` field mappings.
 
-- c:handle\_initialize(init\_request, connection\_state): Called when the client
-  sends the initialize request. The implementer returns the agent's
-  capabilities.
-- c:handle\_new\_session(new\_session\_request, connection\_state): Called to
-  create a new session. The implementer can perform setup and return the initial
-  state for the new session.
-- c:handle\_prompt(prompt\_request, session\_state, client\_proxy): The core
-  callback for handling a user prompt. The session\_state is managed by the
-  underlying Session.GenServer. The client\_proxy is an abstraction (e.g., a PID
-  or a struct of function closures) that allows the agent logic to send
-  notifications and requests back to the client (e.g.,
-  ClientProxy.send\_update(proxy, update\_payload)).
+This approach provides compile-time safety within the Elixir code (via Ecto
+changesets), automatic camelCase ↔ snake_case conversion (via `:source` fields),
+and strict protocol compliance on the wire (via schema validation). All 27
+protocol types from the official specification are now implemented with 157
+passing tests.
 
-#### **4.3.2. The @behaviour AcpEx.Client**
+### **4.3. The Symmetric API: ACPex.Agent and ACPex.Client Behaviours** ✅ **IMPLEMENTED**
 
-This behaviour defines the callbacks for a developer implementing the client
-side of the protocol, such as an editor integration. Key callbacks would
-include:
+The library's public API follows the symmetric design pattern from the Rust
+reference implementation, using Elixir behaviours to provide a clear contract
+for developers. All callbacks now use typed structs throughout, providing
+compile-time safety and automatic camelCase conversion.
 
-- c:handle\_update(session\_update\_notification, session\_state): Called
-  whenever the agent sends a session/update notification. The client implementer
-  would use this to update the UI.
-- c:handle\_request\_permission(permission\_request, session\_state,
-  agent\_proxy): Called when the agent requests permission for an action. The
-  client logic would prompt the user and use the agent\_proxy to send the
-  response.
-- c:handle\_read\_file(read\_file\_request, session\_state, agent\_proxy):
-  Called when the agent requests to read a file from the client's filesystem.
+#### **4.3.1. The @behaviour ACPex.Agent** ✅ **IMPLEMENTED**
 
-This behaviour-based design provides a clean separation between the library's
-internal machinery and the user's application logic, resulting in an API that is
-both idiomatic and easy to use.
+This behaviour defines the callbacks that an agent developer must implement. The
+ACPex library handles the underlying GenServer management and protocol
+communication, invoking these callbacks with typed struct parameters.
+Implemented callbacks include:
+
+- `handle_initialize(InitializeRequest.t(), state())` →
+  `{:ok, InitializeResponse.t(), state()}` Called when the client sends the
+  initialize request. Returns the agent's capabilities in a typed struct.
+
+- `handle_authenticate(AuthenticateRequest.t(), state())` →
+  `{:ok, AuthenticateResponse.t(), state()}` Called when the client sends
+  authentication credentials.
+
+- `handle_new_session(NewRequest.t(), state())` →
+  `{:ok, NewResponse.t(), state()}` Called to create a new session. Returns a
+  struct with the generated session_id.
+
+- `handle_prompt(PromptRequest.t(), state())` |
+  `handle_session_prompt(PromptRequest.t(), state())` →
+  `{:ok, PromptResponse.t(), state()}` The core callback for handling a user
+  prompt. Receives and returns typed structs.
+
+- `handle_cancel(CancelNotification.t(), state())` → `{:noreply, state()}`
+  Called when the client cancels an operation.
+
+**Example implementation:**
+
+```elixir
+def handle_initialize(_request, state) do
+  response = %InitializeResponse{
+    protocol_version: 1,
+    agent_capabilities: %{"sessions" => %{"new" => true}},
+    meta: %{"name" => "MyAgent", "version" => "1.0.0"}
+  }
+  {:ok, response, state}
+end
+```
+
+#### **4.3.2. The @behaviour ACPex.Client** ✅ **IMPLEMENTED**
+
+This behaviour defines the callbacks for implementing the client side of the
+protocol. All callbacks use typed structs for parameters and return values.
+Implemented callbacks include:
+
+- `handle_session_update(UpdateNotification.t(), state())` →
+  `{:noreply, state()}` Called whenever the agent sends a session/update
+  notification. The UpdateNotification struct contains the update content.
+
+- `handle_fs_read_text_file(FsReadTextFileRequest.t(), state())` →
+  `{:ok, FsReadTextFileResponse.t(), state()} | {:error, error(), state()}`
+  Called when the agent requests to read a file. Request contains the path,
+  response contains the content.
+
+- `handle_fs_write_text_file(FsWriteTextFileRequest.t(), state())` →
+  `{:ok, FsWriteTextFileResponse.t(), state()} | {:error, error(), state()}`
+  Called when the agent requests to write a file.
+
+- `handle_terminal_create(Terminal.CreateRequest.t(), state())` →
+  `{:ok, Terminal.CreateResponse.t(), state()}` Called when the agent creates a
+  terminal. Returns a terminal_id.
+
+- Additional terminal operations: `handle_terminal_output`,
+  `handle_terminal_wait_for_exit`, `handle_terminal_kill`,
+  `handle_terminal_release` - all use typed Terminal.\* structs.
+
+**Example implementation:**
+
+```elixir
+def handle_fs_read_text_file(request, state) do
+  case File.read(request.path) do
+    {:ok, content} ->
+      response = %FsReadTextFileResponse{content: content}
+      {:ok, response, state}
+    {:error, _reason} ->
+      {:error, %{code: -32001, message: "File not found"}, state}
+  end
+end
+```
+
+This struct-based API provides:
+
+- **Type safety** - Pattern matching on structs catches errors at compile time
+- **Auto-completion** - IDEs can suggest field names from struct definitions
+- **Self-documenting** - Struct field names make the API clear and discoverable
+- **Zero conversion** - Schemas handle camelCase ↔ snake_case automatically
 
 ### **4.4. Public Interface**
 
@@ -449,13 +517,13 @@ The primary entry points for the library will be simple, high-level functions
 that abstract away the complexity of starting the OTP supervision tree and
 transport layer.
 
-- AcpEx.start\_agent(agent\_module, initial\_args): This function is the main
-  entry point for an agent. It takes the user's agent implementation module
-  (which must adhere to the AcpEx.Agent behaviour) and some initial arguments.
+- AcpEx.start_agent(agent_module, initial_args): This function is the main entry
+  point for an agent. It takes the user's agent implementation module (which
+  must adhere to the AcpEx.Agent behaviour) and some initial arguments.
   Internally, it starts the AcpEx.Application supervision tree, including the
   Stdio transport listener, and prepares to handle incoming client connections.
-- AcpEx.start\_client(client\_module, initial\_args, agent\_command): This is
-  the corresponding entry point for a client. It takes the user's client
+- AcpEx.start_client(client_module, initial_args, agent_command): This is the
+  corresponding entry point for a client. It takes the user's client
   implementation module (@behaviour AcpEx.Client), initial arguments, and the
   command needed to spawn the agent as a subprocess (e.g., {"gemini",
   \["acp"\]}). The function will spawn the external agent process, start the
@@ -476,33 +544,33 @@ patterns for both sides of the protocol.
 ### **5.1. The Agent: A Simple "Code Refactor" Agent**
 
 This reference implementation will demonstrate how to build a basic AI agent
-using the acp\_ex library. The agent will be capable of performing a trivial
+using the acp_ex library. The agent will be capable of performing a trivial
 "refactoring" task, such as reversing the content of a function provided in a
 prompt. The implementation process would be as follows:
 
 1. **Project Setup:** A new Mix project is created, e.g., $ mix new
-   refactor\_agent \--sup, and acp\_ex is added as a dependency in mix.exs.
+   refactor_agent \--sup, and acp_ex is added as a dependency in mix.exs.
 2. **Implement the AcpEx.Agent Behaviour:** A new module, RefactorAgent.Impl, is
    created. This module will be declared with @behaviour AcpEx.Agent.
 3. **Implement Callbacks:**
-   - handle\_initialize/2: This callback will be implemented to return a simple
+   - handle_initialize/2: This callback will be implemented to return a simple
      InitializeResponse struct, declaring the agent's name and basic
      capabilities.
-   - handle\_new\_session/2: This callback will simply return an empty map or a
+   - handle_new_session/2: This callback will simply return an empty map or a
      basic struct to serve as the initial session state.
-   - handle\_prompt/3: This is the core logic. The function will: a. Receive the
+   - handle_prompt/3: This is the core logic. The function will: a. Receive the
      PromptRequest struct. It will pattern match on the content blocks to find a
-     text block containing the code to be refactored. b. Use the client\_proxy
+     text block containing the code to be refactored. b. Use the client_proxy
      argument to send a session/update notification with a "thought" message,
-     e.g., AcpEx.ClientProxy.send\_update(proxy, %Update{thought: "Okay, I will
+     e.g., AcpEx.ClientProxy.send_update(proxy, %Update{thought: "Okay, I will
      refactor this code by reversing it."}). This demonstrates the streaming
      notification feature. c. Perform the simple string manipulation on the
      code. d. Construct a PromptResponse struct containing a diff or a patch
-     that represents the change. The response will have a stop\_reason of :done.
-     e. Return the response, which the acp\_ex library will then send back to
-     the client, concluding the prompt turn.
+     that represents the change. The response will have a stop_reason of :done.
+     e. Return the response, which the acp_ex library will then send back to the
+     client, concluding the prompt turn.
 4. **Application Entry Point:** The main application module will be modified to
-   call AcpEx.start\_agent(RefactorAgent.Impl,) in its start/2 function, which
+   call AcpEx.start_agent(RefactorAgent.Impl,) in its start/2 function, which
    starts the agent and makes it listen on stdio.
 
 This simple agent provides a complete, end-to-end example of the agent-side
@@ -512,33 +580,33 @@ workflow, from initialization to handling a prompt and streaming updates.
 
 To interact with and test the RefactorAgent, a corresponding command-line client
 will be built. This tool will demonstrate how to use the client-side API of
-acp\_ex to spawn an agent, send prompts, and receive responses. The
+acp_ex to spawn an agent, send prompts, and receive responses. The
 implementation process for the client would be:
 
-1. **Project Setup:** A new Mix project is created, e.g., $ mix new acp\_cli.
-   acp\_ex is added as a dependency.
+1. **Project Setup:** A new Mix project is created, e.g., $ mix new acp_cli.
+   acp_ex is added as a dependency.
 2. **Implement the AcpEx.Client Behaviour:** A module, AcpCli.Impl, is created
    with @behaviour AcpEx.Client.
 3. **Implement Callbacks:**
-   - handle\_update/2: This callback will be implemented to handle incoming
+   - handle_update/2: This callback will be implemented to handle incoming
      session/update notifications from the agent. It will simply print the
      content of the notification (e.g., thoughts, message chunks) to the
      console, prefixed with \`\`. This demonstrates how a client can receive and
      display real-time progress from the agent.
-   - Other callbacks like handle\_request\_permission/3 can be implemented with
+   - Other callbacks like handle_request_permission/3 can be implemented with
      stub responses, e.g., printing a message and automatically denying the
      request.
 4. **Main Interaction Loop:** A main function will be created to drive the
-   client. This function will: a. Call AcpEx.start\_client(AcpCli.Impl,,
-   {"path/to/refactor\_agent/run\_script",}). This spawns the agent from the
+   client. This function will: a. Call AcpEx.start_client(AcpCli.Impl,,
+   {"path/to/refactor_agent/run_script",}). This spawns the agent from the
    previous section as a subprocess and starts the client-side OTP supervision
    tree. The function returns a proxy object for communicating with the agent.
    b. Enter a loop that reads a line of input from the user's terminal
    (IO.gets/1). c. Package the user's input into a PromptRequest struct. d. Use
-   the agent proxy returned by start\_client to send the prompt to the agent,
-   e.g., AcpEx.AgentProxy.send\_prompt(proxy, prompt\_request). e. The final
+   the agent proxy returned by start_client to send the prompt to the agent,
+   e.g., AcpEx.AgentProxy.send_prompt(proxy, prompt_request). e. The final
    response from the agent will be delivered asynchronously. The client can
-   either be designed to wait for it or simply rely on the handle\_update
+   either be designed to wait for it or simply rely on the handle_update
    callback to print all incoming messages.
 
 This command-line client validates the entire communication loop from the other
@@ -552,13 +620,13 @@ Creating a high-quality, community-trusted open-source library involves more
 than just writing functional code. A rigorous approach to testing, a commitment
 to comprehensive documentation, and a clear strategy for publishing and
 community engagement are essential for long-term success and adoption. This
-section outlines the non-functional requirements for taking acp\_ex from a
+section outlines the non-functional requirements for taking acp_ex from a
 prototype to a production-ready package.
 
 ### **6.1. A Comprehensive Testing Strategy**
 
 A robust testing suite is non-negotiable for a library that handles complex,
-stateful, and bidirectional communication. The testing strategy for acp\_ex
+stateful, and bidirectional communication. The testing strategy for acp_ex
 should be multi-layered to ensure correctness at every level of the stack.
 
 - **Unit Tests:** These tests will focus on individual components in isolation.
@@ -590,7 +658,7 @@ should be multi-layered to ensure correctness at every level of the stack.
 
 ### **6.2. Documentation as a First-Class Citizen**
 
-The Elixir community places a high value on excellent documentation, and acp\_ex
+The Elixir community places a high value on excellent documentation, and acp_ex
 must adhere to this standard to gain adoption. Documentation should be treated
 as an integral part of the development process, not an afterthought.
 
@@ -609,7 +677,7 @@ as an integral part of the development process, not an afterthought.
 - **Guides and Tutorials:** The ExDoc configuration will include "extra pages"
   to provide long-form content beyond the API reference. These pages should
   include:
-  - A "Getting Started" guide that walks a new user through adding acp\_ex to
+  - A "Getting Started" guide that walks a new user through adding acp_ex to
     their project.
   - Detailed tutorials based on the reference implementations from Section 5,
     showing how to build both an agent and a client step-by-step.
@@ -638,7 +706,7 @@ Hex package manager to make it accessible to the Elixir community.
 
 This final section synthesizes the key architectural decisions presented in this
 report and outlines a potential roadmap for the future development and evolution
-of the acp\_ex library. These recommendations are designed to ensure the library
+of the acp_ex library. These recommendations are designed to ensure the library
 is not only a successful implementation of the current protocol but also a
 flexible foundation for future innovation in Elixir-based AI tooling.
 
@@ -668,7 +736,7 @@ library. The most critical of these decisions are:
 
 ### **7.2. Future Roadmap and Potential Extensions**
 
-With a solid foundation in place, the acp\_ex library can evolve to support a
+With a solid foundation in place, the acp_ex library can evolve to support a
 wider range of use cases and integrations. The following are potential avenues
 for future development:
 
@@ -677,32 +745,32 @@ for future development:
   stdio. A future version could introduce alternative transport modules. A prime
   candidate would be a **WebSocket transport** (AcpEx.Transport.WebSocket). This
   would enable web-based IDEs or applications (e.g., a Phoenix LiveView-based
-  editor) to connect to acp\_ex agents running on a server, significantly
+  editor) to connect to acp_ex agents running on a server, significantly
   broadening the library's applicability beyond local subprocesses.
-- **mcp\_ex Integration:** As established, a useful ACP agent will almost
+- **mcp_ex Integration:** As established, a useful ACP agent will almost
   certainly need to be an MCP client. The logical next step for the ecosystem is
-  the development of a companion **mcp\_ex library** for building MCP servers
-  and clients in Elixir. The acp\_ex library's schema modules for shared data
-  types (like tool calls and resource links) should be designed from the outset
-  to be easily extracted into a shared dependency that both libraries can use,
+  the development of a companion **mcp_ex library** for building MCP servers and
+  clients in Elixir. The acp_ex library's schema modules for shared data types
+  (like tool calls and resource links) should be designed from the outset to be
+  easily extracted into a shared dependency that both libraries can use,
   ensuring seamless and correct integration between them.
 - **Phoenix Framework Integration:** Building on the concept of a WebSocket
-  transport, a dedicated **acp\_ex\_phoenix** integration library could be
+  transport, a dedicated **acp_ex_phoenix** integration library could be
   created. This library could provide helpers, such as a Phoenix Channel
-  implementation, that make it trivial to host an acp\_ex agent within a
-  standard Phoenix web application. This would unlock powerful scenarios, such
-  as building collaborative, multi-user, AI-powered tools directly on the web
-  using the Phoenix framework.
+  implementation, that make it trivial to host an acp_ex agent within a standard
+  Phoenix web application. This would unlock powerful scenarios, such as
+  building collaborative, multi-user, AI-powered tools directly on the web using
+  the Phoenix framework.
 
 ### **7.3. Concluding Remarks**
 
 The Agent Client Protocol represents a pivotal moment in the evolution of
 developer tooling, promising a future of interoperable, intelligent, and
-customizable coding environments. The acp\_ex library, as architected in this
+customizable coding environments. The acp_ex library, as architected in this
 report, is designed to be more than a simple protocol implementation. It is a
 strategic asset that will empower the Elixir community to be an active and
 innovative participant in this future. By embracing the strengths of OTP and
-providing an idiomatic, developer-friendly API, acp\_ex can serve as the
+providing an idiomatic, developer-friendly API, acp_ex can serve as the
 foundation for a new generation of AI-powered development tools, assistants, and
 workflows, ensuring that Elixir remains a premier platform for building the next
 wave of software applications.
@@ -744,7 +812,6 @@ agent-client-protocol \- crates.io: Rust Package Registry,
 https://crates.io/crates/agent-client-protocol 20\.
 zed-industries/agent-client-protocol \- GitHub,
 https://github.com/zed-industries/agent-client-protocol 21\.
-agent\_client\_protocol \- Rust \- Docs.rs,
-https://docs.rs/agent-client-protocol 22\. Discussions \- zed-industries
-agent-client-protocol \- GitHub,
+agent_client_protocol \- Rust \- Docs.rs, https://docs.rs/agent-client-protocol
+22\. Discussions \- zed-industries agent-client-protocol \- GitHub,
 https://github.com/zed-industries/agent-client-protocol/discussions

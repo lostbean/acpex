@@ -14,11 +14,11 @@ Welcome to an **interactive demonstration** of ACPex controlling Claude Code ACP
 
 In this livebook, you'll build a complete AI coding assistant interface that:
 
-* 🤖 Connects to **Claude Code ACP** via the Agent Client Protocol (ACP)
-* 💬 Sends prompts and receives intelligent responses
-* 📁 Allows the agent to **read and write files** on your system
-* 🖥️ Enables the agent to **execute terminal commands**
-* 🎨 Provides a beautiful **interactive UI** powered by Kino
+- 🤖 Connects to **Claude Code ACP** via the Agent Client Protocol (ACP)
+- 💬 Sends prompts and receives intelligent responses
+- 📁 Allows the agent to **read and write files** on your system
+- 🖥️ Enables the agent to **execute terminal commands**
+- 🎨 Provides a beautiful **interactive UI** powered by Kino
 
 This is a **real, working implementation** - not a simulation! You'll be controlling an actual AI agent that can help you write code, analyze projects, and perform complex tasks.
 
@@ -324,9 +324,17 @@ defmodule ClaudeClient do
   - Session updates and streams them to the UI
   - File system operations (read/write)
   - Terminal operations (create, execute, monitor)
+
+  All callbacks use typed structs from ACPex.Schema for type safety and
+  automatic camelCase ↔ snake_case conversion.
   """
 
   @behaviour ACPex.Client
+
+  # Import schema types for typed struct usage
+  alias ACPex.Schema.Session.UpdateNotification
+  alias ACPex.Schema.Client.{FsReadTextFileResponse, FsWriteTextFileResponse}
+  alias ACPex.Schema.Client.Terminal
 
   def init(args) do
     ui = Keyword.fetch!(args, :ui)
@@ -345,10 +353,9 @@ defmodule ClaudeClient do
   Handle streaming updates from the agent.
 
   These come in as the agent thinks, plans, and generates responses.
+  Receives an UpdateNotification struct with the update content.
   """
-  def handle_session_update(params, state) do
-    update = params["update"]
-
+  def handle_session_update(%UpdateNotification{update: update}, state) do
     # Render to the output frame
     UI.render_agent_update(state.ui.output_frame, update)
 
@@ -359,8 +366,12 @@ defmodule ClaudeClient do
   Handle agent requests to read files.
 
   The agent might need to read source code, config files, etc.
+  Receives a FsReadTextFileRequest struct, returns a FsReadTextFileResponse struct.
   """
-  def handle_fs_read_text_file(%{"path" => path}, state) do
+  def handle_fs_read_text_file(request, state) do
+    # Access the path from the typed struct
+    path = request.path
+
     UI.log_file_operation(state.ui.file_log_frame, :read, path)
 
     # Resolve relative paths from the current directory
@@ -370,14 +381,17 @@ defmodule ClaudeClient do
       {:ok, content} ->
         UI.log_file_operation(state.ui.file_log_frame, :read, path, true)
         new_state = %{state | files_accessed: [path | state.files_accessed]}
-        {:ok, %{"content" => content}, new_state}
+
+        # Return a typed response struct
+        response = %FsReadTextFileResponse{content: content}
+        {:ok, response, new_state}
 
       {:error, reason} ->
         UI.log_file_operation(state.ui.file_log_frame, :read, path, false)
 
         error = %{
-          "code" => -32001,
-          "message" => "Failed to read file: #{reason}"
+          code: -32001,
+          message: "Failed to read file: #{reason}"
         }
 
         {:error, error, state}
@@ -388,8 +402,13 @@ defmodule ClaudeClient do
   Handle agent requests to write files.
 
   The agent can create new files or modify existing ones.
+  Receives a FsWriteTextFileRequest struct, returns a FsWriteTextFileResponse struct.
   """
-  def handle_fs_write_text_file(%{"path" => path, "content" => content}, state) do
+  def handle_fs_write_text_file(request, state) do
+    # Access fields from the typed struct
+    path = request.path
+    content = request.content
+
     UI.log_file_operation(state.ui.file_log_frame, :write, path)
 
     full_path = Path.expand(path)
@@ -401,14 +420,17 @@ defmodule ClaudeClient do
       :ok ->
         UI.log_file_operation(state.ui.file_log_frame, :write, path, true)
         new_state = %{state | files_accessed: [path | state.files_accessed]}
-        {:ok, %{"bytes_written" => byte_size(content)}, new_state}
+
+        # Return a typed response struct (FsWriteTextFileResponse is empty)
+        response = %FsWriteTextFileResponse{}
+        {:ok, response, new_state}
 
       {:error, reason} ->
         UI.log_file_operation(state.ui.file_log_frame, :write, path, false)
 
         error = %{
-          "code" => -32002,
-          "message" => "Failed to write file: #{reason}"
+          code: -32002,
+          message: "Failed to write file: #{reason}"
         }
 
         {:error, error, state}
@@ -417,33 +439,37 @@ defmodule ClaudeClient do
 
   @doc """
   Create a new terminal for the agent to use.
+  Receives a Terminal.CreateRequest struct, returns a Terminal.CreateResponse struct.
   """
-  def handle_terminal_create(%{"command" => command} = params, state) do
+  def handle_terminal_create(request, state) do
     terminal_id = "term-" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
 
-    UI.log_terminal(state.ui.terminal_frame, command)
+    UI.log_terminal(state.ui.terminal_frame, request.command)
 
     # In a real implementation, you might use Port or System.cmd
     # For this demo, we'll simulate it
     terminal_info = %{
       id: terminal_id,
-      command: command,
-      cwd: params["cwd"] || File.cwd!(),
+      command: request.command,
+      cwd: request.cwd || File.cwd!(),
       output: ""
     }
 
     new_terminals = Map.put(state.terminals, terminal_id, terminal_info)
 
-    {:ok, %{"terminal_id" => terminal_id}, %{state | terminals: new_terminals}}
+    # Return typed response struct
+    response = %Terminal.CreateResponse{terminal_id: terminal_id}
+    {:ok, response, %{state | terminals: new_terminals}}
   end
 
   @doc """
   Get output from a terminal.
+  Receives a Terminal.OutputRequest struct, returns a Terminal.OutputResponse struct.
   """
-  def handle_terminal_output(%{"terminal_id" => terminal_id}, state) do
-    case Map.get(state.terminals, terminal_id) do
+  def handle_terminal_output(request, state) do
+    case Map.get(state.terminals, request.terminal_id) do
       nil ->
-        error = %{"code" => -32003, "message" => "Terminal not found"}
+        error = %{code: -32003, message: "Terminal not found"}
         {:error, error, state}
 
       terminal ->
@@ -460,51 +486,63 @@ defmodule ClaudeClient do
 
         # Update terminal with output
         updated_terminal = %{terminal | output: output}
-        new_terminals = Map.put(state.terminals, terminal_id, updated_terminal)
+        new_terminals = Map.put(state.terminals, request.terminal_id, updated_terminal)
 
         UI.log_terminal(state.ui.terminal_frame, terminal.command, output)
 
-        {:ok, %{"output" => output, "exit_code" => exit_code},
-         %{state | terminals: new_terminals}}
+        # Return typed response struct
+        response = %Terminal.OutputResponse{
+          output: output,
+          truncated: false,
+          exit_status: %{exitCode: exit_code}
+        }
+
+        {:ok, response, %{state | terminals: new_terminals}}
     end
   end
 
   @doc """
   Wait for a terminal command to finish.
+  Receives a Terminal.WaitForExitRequest struct, returns a Terminal.WaitForExitResponse struct.
   """
-  def handle_terminal_wait_for_exit(%{"terminal_id" => terminal_id}, state) do
-    case Map.get(state.terminals, terminal_id) do
+  def handle_terminal_wait_for_exit(request, state) do
+    case Map.get(state.terminals, request.terminal_id) do
       nil ->
-        error = %{"code" => -32003, "message" => "Terminal not found"}
+        error = %{code: -32003, message: "Terminal not found"}
         {:error, error, state}
 
       _terminal ->
         # In our simulation, commands finish immediately
-        {:ok, %{"exit_code" => 0}, state}
+        response = %Terminal.WaitForExitResponse{exit_code: 0}
+        {:ok, response, state}
     end
   end
 
   @doc """
   Kill a running terminal command.
+  Receives a Terminal.KillRequest struct, returns a Terminal.KillResponse struct.
   """
-  def handle_terminal_kill(%{"terminal_id" => terminal_id}, state) do
-    case Map.get(state.terminals, terminal_id) do
+  def handle_terminal_kill(request, state) do
+    case Map.get(state.terminals, request.terminal_id) do
       nil ->
-        error = %{"code" => -32003, "message" => "Terminal not found"}
+        error = %{code: -32003, message: "Terminal not found"}
         {:error, error, state}
 
       _terminal ->
-        new_terminals = Map.delete(state.terminals, terminal_id)
-        {:ok, %{}, %{state | terminals: new_terminals}}
+        new_terminals = Map.delete(state.terminals, request.terminal_id)
+        response = %Terminal.KillResponse{}
+        {:ok, response, %{state | terminals: new_terminals}}
     end
   end
 
   @doc """
   Release a terminal (cleanup).
+  Receives a Terminal.ReleaseRequest struct, returns a Terminal.ReleaseResponse struct.
   """
-  def handle_terminal_release(%{"terminal_id" => terminal_id}, state) do
-    new_terminals = Map.delete(state.terminals, terminal_id)
-    {:ok, %{}, %{state | terminals: new_terminals}}
+  def handle_terminal_release(request, state) do
+    new_terminals = Map.delete(state.terminals, request.terminal_id)
+    response = %Terminal.ReleaseResponse{}
+    {:ok, response, %{state | terminals: new_terminals}}
   end
 end
 
@@ -870,10 +908,10 @@ counts. Include tests.
 
 Congratulations! You've built a complete, working integration between:
 
-* **Livebook** - Your interactive notebook environment
-* **Kino** - Beautiful, reactive UI components
-* **ACPex** - Your Elixir ACP protocol implementation
-* **Claude Code ACP** - Anthropic's powerful AI coding assistant
+- **Livebook** - Your interactive notebook environment
+- **Kino** - Beautiful, reactive UI components
+- **ACPex** - Your Elixir ACP protocol implementation
+- **Claude Code ACP** - Anthropic's powerful AI coding assistant
 
 <!-- livebook:{"break_markdown":true} -->
 
@@ -889,20 +927,20 @@ Congratulations! You've built a complete, working integration between:
 
 #### Next Steps
 
-* Experiment with different prompts and see what Claude can do
-* Try implementing additional ACP features (like session persistence)
-* Build your own custom agent using ACPex
-* Create a web interface using Phoenix LiveView
-* Integrate with other MCP-compatible tools
+- Experiment with different prompts and see what Claude can do
+- Try implementing additional ACP features (like session persistence)
+- Build your own custom agent using ACPex
+- Create a web interface using Phoenix LiveView
+- Integrate with other MCP-compatible tools
 
 <!-- livebook:{"break_markdown":true} -->
 
 #### Resources
 
-* **ACPex Documentation**: Check out the HexDocs for ACPex
-* **ACP Specification**: https://agentclientprotocol.com
-* **Claude Code ACP**: https://github.com/zed-industries/claude-code-acp
-* **Kino Documentation**: https://hexdocs.pm/kino
+- **ACPex Documentation**: Check out the HexDocs for ACPex
+- **ACP Specification**: https://agentclientprotocol.com
+- **Claude Code ACP**: https://github.com/zed-industries/claude-code-acp
+- **Kino Documentation**: https://hexdocs.pm/kino
 
 ---
 

@@ -22,10 +22,12 @@ defmodule ACPex.Schema.Connection.AuthenticateResponse do
 
   @primary_key false
   embedded_schema do
+    field(:authenticated, :boolean)
     field(:meta, :map, source: :_meta)
   end
 
   @type t :: %__MODULE__{
+          authenticated: boolean() | nil,
           meta: map() | nil
         }
 
@@ -37,7 +39,7 @@ defmodule ACPex.Schema.Connection.AuthenticateResponse do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(struct \\ %__MODULE__{}, params) do
     struct
-    |> cast(params, [:meta])
+    |> cast(params, [:authenticated, :meta])
   end
 
   defimpl Jason.Encoder do
