@@ -36,6 +36,7 @@ defmodule ACPex.E2ETest do
 
   # 2 minutes for entire module
   @moduletag timeout: 120_000
+  @moduletag capture_log: true
 
   @test_agent_path Path.expand("../support/test_agent.sh", __DIR__)
   @claude_code_path "/Users/edgar/.npm-global/bin/claude-code-acp"

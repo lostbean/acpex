@@ -4,46 +4,33 @@
 
 ### 1. Generic Executable Handling (Remove Node.js Special-Casing)
 
-**Status:** 🟡 Works but not ideal **Context:** Exile integration is complete
-and working well! However, we still have special logic to detect Node.js scripts
-and spawn them with `node`. This should be generalized to handle any executable
-properly.
+**Status:** ✅ **Completed** **Context:** Successfully simplified executable
+resolution to let the OS handle all executable types uniformly (binaries,
+scripts with shebangs, symlinks).
 
-**Current Issue:**
+**Completed Work:**
 
-```elixir
-# lib/acpex/protocol/connection.ex:262-299
-defp resolve_executable(path, args) do
-  # Special cases for .js/.mjs files
-  # Special cases for shebang scripts
-  # Falls back to treating as binary
-end
-```
-
-**Tasks:**
-
-- [x] Research Elixir/Erlang best practices for spawning external processes
+- ✅ Research Elixir/Erlang best practices for spawning external processes
   - ✅ Exile library chosen and integrated successfully
   - ✅ Provides backpressure, async I/O, and proper stream handling
-- [ ] Simplify `resolve_executable/2` to handle all executables uniformly
-  - Let the OS handle shebang scripts (they should work with
-    `:spawn_executable`)
-  - Remove Node.js-specific detection
-  - Test with multiple agent types (bash script, Node.js, potential Python/Ruby
-    agents)
-- [ ] Consider using `System.find_executable/1` to validate paths before
-      spawning
-- [ ] Add clear error messages when executable cannot be spawned
-
-**References:**
-
-- Port documentation: https://hexdocs.pm/elixir/Port.html
-- Erlang spawn options: https://www.erlang.org/doc/man/erlang#open_port-2
-- Exile library: https://github.com/akash-akya/exile (✅ integrated)
-
-**Note:** While we keep this task, the Node.js detection is currently working
-well with Exile. This is more of a code cleanliness improvement than a
-functional issue.
+- ✅ Simplified `resolve_executable/2` to handle all executables uniformly
+  - OS now handles shebang scripts automatically with `:spawn_executable`
+  - Removed Node.js-specific detection (`.js`/`.mjs` special-casing)
+  - Removed manual shebang detection
+  - Removed complex symlink resolution
+  - Tested with bash script agent - works perfectly
+- ✅ Added `System.find_executable/1` to resolve paths from PATH
+- ✅ Added validation and clear error messages:
+  - File existence check
+  - Executable permission check
+  - Clear error messages for common failure cases
+- ✅ Added comprehensive unit tests in `connection_test.exs`:
+  - Test with absolute paths to existing executables
+  - Test with non-existent files
+  - Test with non-executable files
+  - Test with commands in PATH
+  - Test with commands not in PATH
+- ✅ Verified backward compatibility with e2e tests
 
 ---
 

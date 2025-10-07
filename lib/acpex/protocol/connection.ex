@@ -52,6 +52,7 @@ defmodule ACPex.Protocol.Connection do
 
   """
   use GenServer
+  import Bitwise
   require Logger
 
   alias ACPex.Protocol.SessionSupervisor
@@ -243,69 +244,79 @@ defmodule ACPex.Protocol.Connection do
         agent_args = Keyword.get(opts, :agent_args, [])
 
         # Resolve the actual executable and args
-        {executable, full_args} = resolve_executable(path, agent_args)
+        case resolve_executable(path, agent_args) do
+          {:ok, {executable, full_args}} ->
+            transport_opts = [
+              port_opts: {:spawn_executable, executable},
+              port_args: full_args
+            ]
 
-        transport_opts = [
-          port_opts: {:spawn_executable, executable},
-          port_args: full_args
-        ]
+            Logger.debug(
+              "Starting transport for executable=#{executable}, args=#{inspect(full_args)}"
+            )
 
-        Logger.debug(
-          "Starting transport for executable=#{executable}, args=#{inspect(full_args)}"
-        )
+            transport_module.start_link(self(), transport_opts)
 
-        transport_module.start_link(self(), transport_opts)
+          {:error, reason} ->
+            {:error, reason}
+        end
     end
   end
 
-  # Resolve the executable path, handling Node.js scripts
+  # Resolve the executable path
+  #
+  # This function validates that the given path points to an executable file.
+  # The OS handles all executable types uniformly (binaries, scripts with shebangs, symlinks).
+  #
+  # Returns {:ok, {executable_path, args}} or {:error, reason}
   defp resolve_executable(path, args) do
-    # Resolve symlinks to get the real path
-    real_path =
-      case File.read_link(path) do
-        {:ok, target} ->
-          # If it's a relative symlink, resolve it relative to the symlink's directory
-          if String.starts_with?(target, "/") do
-            target
-          else
-            path
-            |> Path.dirname()
-            |> Path.join(target)
-            |> Path.expand()
-          end
-
-        {:error, _} ->
-          # Not a symlink, use as-is
-          path
+    # If path is not absolute, try to resolve it from PATH
+    resolved_path =
+      if Path.type(path) == :absolute do
+        path
+      else
+        System.find_executable(path)
       end
 
-    # Check if it's a Node.js script (ends with .js or .mjs)
-    cond do
-      String.ends_with?(real_path, [".js", ".mjs"]) ->
-        # It's a JavaScript file, need to run with node
-        node_path = System.find_executable("node") || "node"
-        {node_path, [real_path | args]}
+    case resolved_path do
+      nil ->
+        {:error, "Executable not found in PATH: #{path}"}
 
-      # Check if original path is a script with shebang
-      script_with_shebang?(real_path) ->
-        # Has shebang, but Erlang ports may not handle it, use the original path
-        # and hope it's executable, otherwise this will fail with a clear error
-        {path, args}
+      abs_path ->
+        cond do
+          not File.exists?(abs_path) ->
+            {:error, "Executable does not exist: #{abs_path}"}
 
-      true ->
-        # Looks like a real binary executable
-        {path, args}
+          not executable?(abs_path) ->
+            {:error, "File is not executable: #{abs_path}"}
+
+          true ->
+            {:ok, {abs_path, args}}
+        end
     end
   end
 
-  defp script_with_shebang?(path) do
-    case File.open(path, [:read]) do
-      {:ok, file} ->
-        first_bytes = IO.binread(file, 2)
-        File.close(file)
-        first_bytes == "#!"
+  # Check if a file is executable
+  # On Unix systems, checks the execute permission bit
+  defp executable?(path) do
+    case File.stat(path) do
+      {:ok, %File.Stat{type: :regular, mode: mode}} ->
+        # Check if any execute bit is set (owner, group, or other)
+        # Execute bits are 0o111 (owner=0o100, group=0o010, other=0o001)
+        band(mode, 0o111) != 0
 
-      {:error, _} ->
+      {:ok, %File.Stat{type: :symlink}} ->
+        # For symlinks, check the target
+        case File.stat(path, time: :posix) do
+          {:ok, %File.Stat{mode: mode}} ->
+            band(mode, 0o111) != 0
+
+          _ ->
+            false
+        end
+
+      _ ->
+        # If we can't stat it, assume it's not executable
         false
     end
   end

@@ -1,6 +1,8 @@
 defmodule ACPex.Protocol.SessionTest do
   use ExUnit.Case
 
+  @moduletag capture_log: true
+
   alias ACPex.Protocol.Session
   alias ACPex.Test.MockTransport
 

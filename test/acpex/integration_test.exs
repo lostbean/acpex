@@ -7,6 +7,8 @@ defmodule ACPex.IntegrationTest do
   """
   use ExUnit.Case
 
+  @moduletag capture_log: true
+
   alias ACPex.Protocol.Connection
   alias ACPex.Test.MockTransport
 
