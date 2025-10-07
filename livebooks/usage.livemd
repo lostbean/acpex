@@ -44,7 +44,43 @@ export ANTHROPIC_API_KEY="your-api-key-here"
 
 Get your API key from: https://console.anthropic.com/settings/keys
 
-### 3. Verify Installation
+### 3. Set up Environment
+
+Livebook needs the PATH environment variable to find `node` (required for the claude-code-acp shebang):
+
+```elixir
+# Get current PATH or set a default that includes common locations
+current_path = System.get_env("PATH") || ""
+
+node_path = "/nix/store/khd45b778lsj96hmcywhdbsmqv43cwdn-nodejs-22.19.0/bin"
+
+# Add common paths where node might be installed
+additional_paths = [
+  "/usr/local/bin",
+  "/usr/bin",
+  "/bin",
+  "/opt/homebrew/bin",
+  node_path,
+  System.get_env("HOME") && Path.join(System.get_env("HOME"), ".nvm/versions/node/*/bin"),
+  # Nix store path (if using nix)
+  System.find_executable("node") && Path.dirname(System.find_executable("node"))
+]
+
+new_path =
+  ([current_path] ++ Enum.filter(additional_paths, & &1))
+  |> Enum.join(":")
+
+System.put_env("PATH", new_path)
+System.put_env("ANTHROPIC_API_KEY", System.get_env("LB_ANTHROPIC_API_KEY"))
+
+Kino.Markdown.new("""
+✅ **Environment configured**
+
+PATH includes: `node` at `#{System.find_executable("node") || "not found"}`
+""")
+```
+
+### 4. Verify Installation
 
 Check that Claude Code ACP is available:
 
@@ -92,9 +128,16 @@ defmodule UI do
       terminal_frame: Kino.Frame.new(),
 
       # Input controls
-      prompt_input:
-        Kino.Input.textarea("💭 Your Prompt",
-          default: "Analyze the structure of this ACPex library and suggest improvements."
+      prompt_form:
+        Kino.Control.form(
+          [
+            prompt:
+              Kino.Input.textarea("💭 Your Prompt",
+                default: "Analyze the structure of this ACPex library and suggest improvements."
+              )
+          ],
+          submit: "📤 Send Prompt",
+          reset_on_submit: []
         ),
       model_selector:
         Kino.Input.select(
@@ -109,8 +152,7 @@ defmodule UI do
 
       # Action buttons
       start_button: Kino.Control.button("🚀 Start Agent"),
-      stop_button: Kino.Control.button("🛑 Stop Agent"),
-      send_button: Kino.Control.button("📤 Send Prompt")
+      stop_button: Kino.Control.button("🛑 Stop Agent")
     }
   end
 
@@ -136,8 +178,7 @@ defmodule UI do
         # Prompt Section
         Kino.Layout.grid([
           Kino.Markdown.new("### Prompt"),
-          ui.prompt_input,
-          ui.send_button
+          ui.prompt_form
         ]),
 
         # Output Section
@@ -470,19 +511,20 @@ end
 :ok
 ```
 
-### 🚀 Starting the Agent Connection
+### 🚀 Starting and Initializing the Agent
 
 Now let's connect to Claude Code ACP! This cell will:
 
 1. Find the Claude Code ACP executable
 2. Start the ACPex client connection
 3. Spawn Claude Code ACP as a subprocess
+4. Automatically send the initialize message
 
 <!-- livebook:{"break_markdown":true} -->
 
 ⚠️ **Note:** Make sure you've set your `ANTHROPIC_API_KEY` environment variable first
 
-```elixir
+````elixir
 # Store the connection in the process dictionary so we can access it later
 agent_connection = Process.get(:agent_connection)
 
@@ -497,6 +539,8 @@ else
   claude_acp_path = System.find_executable(claude_code_acp_path)
 
   if claude_acp_path do
+    UI.update_status(ui.status_frame, :connecting, :blue)
+
     # Start the agent
     result =
       ACPex.start_client(
@@ -511,15 +555,72 @@ else
         Process.put(:agent_connection, conn_pid)
         Process.put(:current_session_id, nil)
 
-        UI.update_status(ui.status_frame, :connected, :green)
+        # Immediately send initialize request (required by ACP protocol)
+        init_response =
+          ACPex.Protocol.Connection.send_request(
+            conn_pid,
+            "initialize",
+            %{
+              "protocolVersion" => 1,
+              "capabilities" => %{
+                "filesystem" => true,
+                "terminal" => true
+              },
+              "clientInfo" => %{
+                "name" => "Livebook",
+                "version" => "0.1.0"
+              }
+            },
+            # 30 second timeout
+            30_000
+          )
 
-        Kino.Markdown.new("""
-        ✅ **Agent Connected!**
+        case init_response do
+          %{"result" => result} ->
+            UI.update_status(ui.status_frame, :connected, :green)
 
-        Claude Code ACP is now running and ready to receive prompts.
+            protocol_version = result["protocolVersion"] || result["protocol_version"]
+            agent_info = result["agentInfo"] || result["agent_info"]
+            capabilities = result["agentCapabilities"] || result["capabilities"]
 
-        Agent path: `#{claude_acp_path}`
-        """)
+            Kino.Markdown.new("""
+            ✅ **Agent Connected and Initialized!**
+
+            **Agent Path:** `#{claude_acp_path}`
+
+            **Protocol Version:** #{protocol_version}
+
+            **Agent Info:**
+            ```json
+            #{Jason.encode!(agent_info || %{}, pretty: true)}
+            ```
+
+            **Capabilities:**
+            ```json
+            #{Jason.encode!(capabilities || %{}, pretty: true)}
+            ```
+
+            You're now ready to create a session and send prompts!
+            """)
+
+          %{"error" => error} ->
+            UI.update_status(ui.status_frame, :error, :red)
+
+            Kino.Markdown.new("""
+            ❌ **Initialization Failed!**
+
+            Error: #{error["message"]}
+            """)
+
+          _ ->
+            UI.update_status(ui.status_frame, :error, :red)
+
+            Kino.Markdown.new("""
+            ⚠️ **Unexpected Response**
+
+            #{inspect(init_response)}
+            """)
+        end
 
       {:error, reason} ->
         UI.update_status(ui.status_frame, :error, :red)
@@ -541,79 +642,6 @@ else
     Please install it and restart the runtime.
     """)
   end
-end
-```
-
-### 🔄 Initialize the Agent
-
-Before we can send prompts, we need to initialize the connection:
-
-````elixir
-agent_connection = Process.get(:agent_connection)
-
-if agent_connection && Process.alive?(agent_connection) do
-  # Send initialize request
-  init_response =
-    ACPex.Protocol.Connection.send_request(
-      agent_connection,
-      "initialize",
-      %{
-        "protocolVersion" => 1,
-        "capabilities" => %{
-          "filesystem" => true,
-          "terminal" => true
-        },
-        "clientInfo" => %{
-          "name" => "Livebook",
-          "version" => "0.1.0"
-        }
-      },
-      # 30 second timeout
-      30_000
-    )
-
-  case init_response do
-    %{"result" => result} ->
-      protocol_version = result["protocolVersion"] || result["protocol_version"]
-      agent_info = result["agentInfo"] || result["agent_info"]
-      capabilities = result["agentCapabilities"] || result["capabilities"]
-
-      Kino.Markdown.new("""
-      ✅ **Agent Initialized!**
-
-      **Protocol Version:** #{protocol_version}
-
-      **Agent Info:**
-      ```json
-      #{Jason.encode!(agent_info || %{}, pretty: true)}
-      ```
-
-      **Capabilities:**
-      ```json
-      #{Jason.encode!(capabilities || %{}, pretty: true)}
-      ```
-      """)
-
-    %{"error" => error} ->
-      Kino.Markdown.new("""
-      ❌ **Initialization Failed!**
-
-      Error: #{error["message"]}
-      """)
-
-    _ ->
-      Kino.Markdown.new("""
-      ⚠️ **Unexpected Response**
-
-      #{inspect(init_response)}
-      """)
-  end
-else
-  Kino.Markdown.new("""
-  ⚠️ **Agent not connected!**
-
-  Please run the "Starting the Agent Connection" cell above first.
-  """)
 end
 ````
 
@@ -684,16 +712,16 @@ Now for the fun part! Use the interactive form to send prompts:
 agent_connection = Process.get(:agent_connection)
 session_id = Process.get(:current_session_id)
 
-# Listen to the send button
-send_stream = Kino.Control.stream(ui.send_button)
+# Listen to the form submission
+form_stream = Kino.Control.stream(ui.prompt_form)
 
-Kino.listen(send_stream, fn _event ->
+Kino.listen(form_stream, fn event ->
   if agent_connection && Process.alive?(agent_connection) && session_id do
     # Clear the output frame
     Kino.Frame.clear(ui.output_frame)
 
-    # Get the prompt from the input
-    prompt_text = Kino.Input.read(ui.prompt_input)
+    # Get the prompt from the form event
+    prompt_text = event.data.prompt
 
     if prompt_text && String.trim(prompt_text) != "" do
       # Show that we're sending
@@ -754,7 +782,7 @@ end)
 Kino.Markdown.new("""
 ✨ **Ready to chat!**
 
-Type your prompt in the textarea above and click "📤 Send Prompt".
+Type your prompt in the form above and click "📤 Send Prompt" to submit.
 
 The agent will:
 - Stream its thinking process in real-time
