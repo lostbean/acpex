@@ -380,39 +380,7 @@ defmodule ACPex.Protocol.Connection do
 
     case Map.get(state.sessions, session_id) do
       nil ->
-        # Only create sessions on-demand for clients
-        # Agents should error on unknown session_ids
-        if state.role == :client do
-          Logger.debug("Session not found, creating on-demand for session_id: #{session_id}")
-
-          case SessionSupervisor.start_session(
-                 state.session_sup,
-                 state.handler_module,
-                 state.handler_state,
-                 state.transport_pid,
-                 session_id
-               ) do
-            {:ok, session_pid} ->
-              Logger.debug("  Created session #{inspect(session_pid)}, forwarding message")
-              new_sessions = Map.put(state.sessions, session_id, session_pid)
-              send(session_pid, {:forward, msg})
-              {:noreply, %{state | sessions: new_sessions}}
-
-            {:error, reason} ->
-              Logger.error("Failed to create session on-demand: #{inspect(reason)}")
-              error = %{code: -32_000, message: "Failed to create session"}
-              response = build_error_response(msg["id"], error)
-              send_message(state.transport_pid, response)
-              {:noreply, state}
-          end
-        else
-          Logger.error("Received message for unknown session_id: #{session_id}")
-          Logger.debug("  Known sessions: #{inspect(Map.keys(state.sessions))}")
-          error = %{code: -32_001, message: "Unknown session_id: #{session_id}"}
-          response = build_error_response(msg["id"], error)
-          send_message(state.transport_pid, response)
-          {:noreply, state}
-        end
+        handle_missing_session(msg, session_id, state)
 
       session_pid ->
         Logger.debug("  Forwarding to session #{inspect(session_pid)}")
@@ -472,6 +440,42 @@ defmodule ACPex.Protocol.Connection do
       send_message(state.transport_pid, response)
     end
 
+    {:noreply, state}
+  end
+
+  # Handle missing session - only create on-demand for clients
+  defp handle_missing_session(msg, session_id, %{role: :client} = state) do
+    Logger.debug("Session not found, creating on-demand for session_id: #{session_id}")
+
+    case SessionSupervisor.start_session(
+           state.session_sup,
+           state.handler_module,
+           state.handler_state,
+           state.transport_pid,
+           session_id
+         ) do
+      {:ok, session_pid} ->
+        Logger.debug("  Created session #{inspect(session_pid)}, forwarding message")
+        new_sessions = Map.put(state.sessions, session_id, session_pid)
+        send(session_pid, {:forward, msg})
+        {:noreply, %{state | sessions: new_sessions}}
+
+      {:error, reason} ->
+        Logger.error("Failed to create session on-demand: #{inspect(reason)}")
+        error = %{code: -32_000, message: "Failed to create session"}
+        response = build_error_response(msg["id"], error)
+        send_message(state.transport_pid, response)
+        {:noreply, state}
+    end
+  end
+
+  # Agents should error on unknown session_ids
+  defp handle_missing_session(msg, session_id, state) do
+    Logger.error("Received message for unknown session_id: #{session_id}")
+    Logger.debug("  Known sessions: #{inspect(Map.keys(state.sessions))}")
+    error = %{code: -32_001, message: "Unknown session_id: #{session_id}"}
+    response = build_error_response(msg["id"], error)
+    send_message(state.transport_pid, response)
     {:noreply, state}
   end
 

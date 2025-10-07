@@ -57,10 +57,6 @@ defmodule ACPex.Protocol.SessionTest do
   setup do
     {:ok, transport_pid} = MockTransport.start_link(self())
 
-    on_exit(fn ->
-      if Process.alive?(transport_pid), do: GenServer.stop(transport_pid)
-    end)
-
     start_opts = %{
       handler_module: TestHandler,
       initial_handler_state: %{},
@@ -68,6 +64,27 @@ defmodule ACPex.Protocol.SessionTest do
     }
 
     {:ok, session_pid} = Session.start_link(start_opts)
+
+    on_exit(fn ->
+      # Stop session first (it may hold references to transport)
+      if Process.alive?(session_pid) do
+        try do
+          GenServer.stop(session_pid)
+        catch
+          :exit, _ -> :ok
+        end
+      end
+
+      # Then stop transport
+      if Process.alive?(transport_pid) do
+        try do
+          GenServer.stop(transport_pid)
+        catch
+          :exit, _ -> :ok
+        end
+      end
+    end)
+
     %{session: session_pid, transport: transport_pid, handler: TestHandler}
   end
 

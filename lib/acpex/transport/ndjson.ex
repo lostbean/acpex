@@ -70,7 +70,7 @@ defmodule ACPex.Transport.Ndjson do
       rescue
         e ->
           Logger.error("Failed to open port: #{inspect(e)}")
-          raise e
+          reraise e, __STACKTRACE__
       end
 
     Logger.info("Port opened successfully")
