@@ -16,7 +16,9 @@ defmodule ACPex.MixProject do
       description: description(),
       name: "ACPex",
       source_url: @source_url,
-      elixirc_paths: elixirc_paths(Mix.env())
+      elixirc_paths: elixirc_paths(Mix.env()),
+      aliases: aliases(),
+      preferred_cli_env: [precommit: :test]
     ]
   end
 
@@ -94,4 +96,10 @@ defmodule ACPex.MixProject do
 
   def elixirc_paths(:test), do: ["lib", "test/support"]
   def elixirc_paths(_), do: ["lib"]
+
+  defp aliases do
+    [
+      precommit: ["format", "test", "credo"]
+    ]
+  end
 end
