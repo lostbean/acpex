@@ -2,7 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:acpex, path: "/code/edgar/acpex"},
+  {:acpex, "~> 0.1.0"},
   {:jason, "~> 1.4"},
   {:kino, "~> 0.14"}
 ])
@@ -14,11 +14,11 @@ Welcome to an **interactive demonstration** of ACPex controlling Claude Code ACP
 
 In this livebook, you'll build a complete AI coding assistant interface that:
 
-- 🤖 Connects to **Claude Code ACP** via the Agent Client Protocol (ACP)
-- 💬 Sends prompts and receives intelligent responses
-- 📁 Allows the agent to **read and write files** on your system
-- 🖥️ Enables the agent to **execute terminal commands**
-- 🎨 Provides a beautiful **interactive UI** powered by Kino
+* 🤖 Connects to **Claude Code ACP** via the Agent Client Protocol (ACP)
+* 💬 Sends prompts and receives intelligent responses
+* 📁 Allows the agent to **read and write files** on your system
+* 🖥️ Enables the agent to **execute terminal commands**
+* 🎨 Provides a beautiful **interactive UI** powered by Kino
 
 This is a **real, working implementation** - not a simulation! You'll be controlling an actual AI agent that can help you write code, analyze projects, and perform complex tasks.
 
@@ -49,34 +49,12 @@ Get your API key from: https://console.anthropic.com/settings/keys
 Livebook needs the PATH environment variable to find `node` (required for the claude-code-acp shebang):
 
 ```elixir
-# Get current PATH or set a default that includes common locations
-current_path = System.get_env("PATH") || ""
-
-node_path = "/nix/store/khd45b778lsj96hmcywhdbsmqv43cwdn-nodejs-22.19.0/bin"
-
-# Add common paths where node might be installed
-additional_paths = [
-  "/usr/local/bin",
-  "/usr/bin",
-  "/bin",
-  "/opt/homebrew/bin",
-  node_path,
-  System.get_env("HOME") && Path.join(System.get_env("HOME"), ".nvm/versions/node/*/bin"),
-  # Nix store path (if using nix)
-  System.find_executable("node") && Path.dirname(System.find_executable("node"))
-]
-
-new_path =
-  ([current_path] ++ Enum.filter(additional_paths, & &1))
-  |> Enum.join(":")
-
-System.put_env("PATH", new_path)
-System.put_env("ANTHROPIC_API_KEY", System.get_env("LB_ANTHROPIC_API_KEY"))
-
 Kino.Markdown.new("""
-✅ **Environment configured**
+**Environment configured**
 
 PATH includes: `node` at `#{System.find_executable("node") || "not found"}`
+
+ANTHROPIC_API_KEY: is `#{System.get_env("ANTHROPIC_API_KEY", "not api key :(") |> String.slice(0..11)}`
 """)
 ```
 
@@ -85,7 +63,7 @@ PATH includes: `node` at `#{System.find_executable("node") || "not found"}`
 Check that Claude Code ACP is available:
 
 ```elixir
-claude_code_acp_path = "/Users/edgar/.npm-global/bin/claude-code-acp"
+claude_code_acp_path = "claude-code-acp"
 ```
 
 ```elixir
@@ -908,10 +886,10 @@ counts. Include tests.
 
 Congratulations! You've built a complete, working integration between:
 
-- **Livebook** - Your interactive notebook environment
-- **Kino** - Beautiful, reactive UI components
-- **ACPex** - Your Elixir ACP protocol implementation
-- **Claude Code ACP** - Anthropic's powerful AI coding assistant
+* **Livebook** - Your interactive notebook environment
+* **Kino** - Beautiful, reactive UI components
+* **ACPex** - Your Elixir ACP protocol implementation
+* **Claude Code ACP** - Anthropic's powerful AI coding assistant
 
 <!-- livebook:{"break_markdown":true} -->
 
@@ -927,23 +905,21 @@ Congratulations! You've built a complete, working integration between:
 
 #### Next Steps
 
-- Experiment with different prompts and see what Claude can do
-- Try implementing additional ACP features (like session persistence)
-- Build your own custom agent using ACPex
-- Create a web interface using Phoenix LiveView
-- Integrate with other MCP-compatible tools
+* Experiment with different prompts and see what Claude can do
+* Try implementing additional ACP features (like session persistence)
+* Build your own custom agent using ACPex
+* Create a web interface using Phoenix LiveView
+* Integrate with other MCP-compatible tools
 
 <!-- livebook:{"break_markdown":true} -->
 
 #### Resources
 
-- **ACPex Documentation**: Check out the HexDocs for ACPex
-- **ACP Specification**: https://agentclientprotocol.com
-- **Claude Code ACP**: https://github.com/zed-industries/claude-code-acp
-- **Kino Documentation**: https://hexdocs.pm/kino
+* **ACPex Documentation**: Check out the HexDocs for ACPex
+* **ACP Specification**: https://agentclientprotocol.com
+* **Claude Code ACP**: https://github.com/zed-industries/claude-code-acp
+* **Kino Documentation**: https://hexdocs.pm/kino
 
 ---
 
 **Happy Coding!** 🚀
-
-***REMOVED***

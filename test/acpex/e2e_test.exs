@@ -39,8 +39,10 @@ defmodule ACPex.E2ETest do
   @moduletag capture_log: true
 
   @test_agent_path Path.expand("../support/test_agent.sh", __DIR__)
-  @claude_code_path "/Users/edgar/.npm-global/bin/claude-code-acp"
+  @claude_acp_path System.find_executable("claude-code-acp")
   @test_dir "/tmp/acpex-e2e-test"
+
+  assert @claude_acp_path != nil
 
   # ============================================================================
   # Test Client Implementation
@@ -587,12 +589,12 @@ defmodule ACPex.E2ETest do
     @moduletag :claude_code_acp
 
     test "claude-code-acp exists at expected path" do
-      assert File.exists?(@claude_code_path),
-             "Claude Code ACP not found at #{@claude_code_path}. Install with: npm install -g @zed-industries/claude-code-acp"
+      assert File.exists?(@claude_acp_path),
+             "Claude Code ACP not found at #{@claude_acp_path}. Install with: npm install -g @zed-industries/claude-code-acp"
     end
 
     test "claude-code-acp is executable" do
-      stat = File.stat!(@claude_code_path)
+      stat = File.stat!(@claude_acp_path)
 
       assert stat.access == :read_write or stat.access == :read,
              "Claude Code ACP not executable"
@@ -610,7 +612,7 @@ defmodule ACPex.E2ETest do
     setup do
       # Skip tests if Claude Code ACP is not available or not authenticated
       cond do
-        not File.exists?(@claude_code_path) ->
+        not File.exists?(@claude_acp_path) ->
           {:ok, skip: true, reason: "Claude Code ACP not installed"}
 
         not claude_code_authenticated?() ->
@@ -628,7 +630,7 @@ defmodule ACPex.E2ETest do
         ACPex.start_client(
           TestClient,
           [test_pid: self()],
-          agent_path: @claude_code_path
+          agent_path: @claude_acp_path
         )
 
       assert Process.alive?(conn)
@@ -643,7 +645,7 @@ defmodule ACPex.E2ETest do
         ACPex.start_client(
           TestClient,
           [test_pid: self()],
-          agent_path: @claude_code_path
+          agent_path: @claude_acp_path
         )
 
       # Claude Code can take 60s+ for first request (model loading, cold start)
@@ -698,7 +700,7 @@ defmodule ACPex.E2ETest do
         ACPex.start_client(
           TestClient,
           [test_pid: self()],
-          agent_path: @claude_code_path
+          agent_path: @claude_acp_path
         )
 
       # Initialize - first request can be very slow (cold start)
@@ -762,7 +764,7 @@ defmodule ACPex.E2ETest do
         ACPex.start_client(
           TestClient,
           [test_pid: self()],
-          agent_path: @claude_code_path
+          agent_path: @claude_acp_path
         )
 
       # Initialize - first request can be very slow
@@ -835,7 +837,7 @@ defmodule ACPex.E2ETest do
         ACPex.start_client(
           TestClient,
           [test_pid: self()],
-          agent_path: @claude_code_path
+          agent_path: @claude_acp_path
         )
 
       # Initialize with filesystem capability - first request can be very slow

@@ -28,40 +28,49 @@ end
 # Start the client
 IO.puts("🚀 Starting Claude Code ACP client...")
 
-{:ok, conn} = ACPex.start_client(
-  SimpleClient,
-  [],
-  agent_path: "/Users/edgar/.npm-global/bin/claude-code-acp"
-)
+claude_acp_path = System.find_executable("claude-code-acp")
+
+assert claude_acp_path != nil
+
+{:ok, conn} =
+  ACPex.start_client(
+    SimpleClient,
+    [],
+    agent_path: claude_acp_path
+  )
 
 IO.puts("✅ Client started: #{inspect(conn)}")
 
 # Send initialize
 IO.puts("\n📤 Sending initialize...")
-response = ACPex.Protocol.Connection.send_request(
-  conn,
-  "initialize",
-  %{
-    "protocolVersion" => 1,
-    "capabilities" => %{},
-    "clientInfo" => %{"name" => "Test", "version" => "1.0"}
-  },
-  60_000
-)
+
+response =
+  ACPex.Protocol.Connection.send_request(
+    conn,
+    "initialize",
+    %{
+      "protocolVersion" => 1,
+      "capabilities" => %{},
+      "clientInfo" => %{"name" => "Test", "version" => "1.0"}
+    },
+    60_000
+  )
 
 IO.puts("📥 Initialize response: #{inspect(response)}")
 
 # Create session
 IO.puts("\n📤 Creating session...")
-session_response = ACPex.Protocol.Connection.send_request(
-  conn,
-  "session/new",
-  %{
-    "cwd" => "/tmp",
-    "mcpServers" => []
-  },
-  30_000
-)
+
+session_response =
+  ACPex.Protocol.Connection.send_request(
+    conn,
+    "session/new",
+    %{
+      "cwd" => "/tmp",
+      "mcpServers" => []
+    },
+    30_000
+  )
 
 IO.puts("📥 Session response: #{inspect(session_response)}")
 session_id = session_response["result"]["sessionId"] || session_response["result"]["session_id"]

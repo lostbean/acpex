@@ -28,9 +28,12 @@
           overlays = [
             unstable-packages
           ];
+          config.allowUnfree = true;
         };
 
         isDarwin = builtins.match ".*-darwin" pkgs.stdenv.hostPlatform.system != null;
+
+        claude-code-acp = pkgs.callPackage ./nix/claude-code-acp.nix { };
 
         shell = pkgs.mkShell {
           buildInputs =
@@ -41,13 +44,12 @@
               unstable.erlang
               unstable.livebook
               rebar3
-              nodejs_22
-              rustc
-              cargo
-              openssl
-              pkg-config
               nodePackages.prettier
               ast-grep
+
+              # for e2e tests
+              unstable.claude-code
+              claude-code-acp
             ]
             ++ (
               if isDarwin then
