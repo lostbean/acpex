@@ -57,8 +57,25 @@ defmodule ACPex.MixProject do
 
   defp docs do
     [
-      main: "readme",
-      extras: ["README.md", "guides/which_acp.md", "guides/getting_started.md"],
+      main: "getting_started",
+      source_ref: "v#{@version}",
+      canonical: "http://hexdocs.pm/acpex",
+      logo: nil,
+      extras: [
+        "README.md",
+        "docs/getting_started.md",
+        "docs/building_agents.md",
+        "docs/building_clients.md",
+        "docs/protocol_overview.md"
+      ],
+      groups_for_extras: [
+        Guides: [
+          "docs/getting_started.md",
+          "docs/building_agents.md",
+          "docs/building_clients.md",
+          "docs/protocol_overview.md"
+        ]
+      ],
       groups_for_modules: [
         "Core API": [ACPex],
         Behaviours: [ACPex.Agent, ACPex.Client],
