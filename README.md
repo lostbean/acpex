@@ -2,7 +2,7 @@
 
 [![Hex.pm](https://img.shields.io/hexpm/v/acpex.svg)](https://hex.pm/packages/acpex)
 [![Hex Docs](https://img.shields.io/badge/hex-docs-lightgreen.svg)](https://hexdocs.pm/acpex/)
-[![License](https://img.shields.io/hexpm/l/acpex.svg)](https://github.com/yourusername/acpex/blob/main/LICENSE)
+[![License](https://img.shields.io/hexpm/l/acpex.svg)](https://github.com/lostbean/acpex/blob/main/LICENSE)
 
 `ACPex` is a robust, performant, and idiomatic Elixir implementation of the
 Agent Client Protocol (ACP).

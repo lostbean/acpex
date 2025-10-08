@@ -2,7 +2,7 @@ defmodule ACPex.MixProject do
   use Mix.Project
 
   @version "0.1.0"
-  @source_url "https://github.com/yourusername/acpex"
+  @source_url "https://github.com/lostbean/acpex"
 
   def project do
     [
