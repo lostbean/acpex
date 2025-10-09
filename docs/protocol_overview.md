@@ -46,28 +46,45 @@ designed for AI-powered coding assistance.
 
 ### Components
 
-```
-┌─────────────────┐         ┌─────────────────┐
-│  Code Editor    │         │   AI Agent      │
-│  (Client)       │         │                 │
-│                 │         │                 │
-│  ┌───────────┐  │ stdin   │  ┌───────────┐  │
-│  │ ACPex     │◄─┼─────────┼──┤ ACPex     │  │
-│  │ Client    │  │         │  │ Agent     │  │
-│  └───────────┘  │         │  └───────────┘  │
-│       │         │ stdout  │       │         │
-│       └─────────┼─────────┼───────┘         │
-│                 │         │                 │
-└─────────────────┘         └─────────────────┘
+```mermaid
+graph LR
+    subgraph Editor["Code Editor (Client)"]
+        EC[ACPex Client]
+    end
+
+    subgraph Agent["AI Agent"]
+        EA[ACPex Agent]
+    end
+
+    EC <-->|stdin/stdout<br/>JSON-RPC| EA
+
+    style Editor fill:#e3f2fd
+    style Agent fill:#f3e5f5
+    style EC fill:#64b5f6
+    style EA fill:#ba68c8
 ```
 
 ### Layer Stack
 
-1. **Transport Layer** - Newline-delimited JSON over stdio
-2. **Protocol Layer** - JSON-RPC 2.0 message handling
-3. **Connection Layer** - Initialization, authentication, session management
-4. **Session Layer** - Individual conversation contexts
-5. **Application Layer** - Your agent or client logic
+```mermaid
+graph TB
+    App[Application Layer<br/>Your agent or client logic]
+    Session[Session Layer<br/>Individual conversation contexts]
+    Conn[Connection Layer<br/>Initialization, authentication, session management]
+    Proto[Protocol Layer<br/>JSON-RPC 2.0 message handling]
+    Trans[Transport Layer<br/>Newline-delimited JSON over stdio]
+
+    App --> Session
+    Session --> Conn
+    Conn --> Proto
+    Proto --> Trans
+
+    style App fill:#c8e6c9
+    style Session fill:#fff9c4
+    style Conn fill:#ffccbc
+    style Proto fill:#d1c4e9
+    style Trans fill:#b2dfdb
+```
 
 ## Message Format
 
@@ -623,35 +640,35 @@ models to tools and data sources. It's complementary to ACP.
 
 ### How They Work Together
 
-```
-┌─────────────────┐
-│  Code Editor    │
-│   (ACP Client)  │
-└────────┬────────┘
-         │ ACP
-         │ (JSON-RPC over stdio)
-         ▼
-┌─────────────────┐
-│   AI Agent      │
-│  (ACP Server)   │
-└────────┬────────┘
-         │ MCP
-         │ (JSON-RPC over stdio/HTTP/SSE)
-         ▼
-┌─────────────────┐
-│  MCP Servers    │
-│  (Tools/Data)   │
-└─────────────────┘
+```mermaid
+graph TB
+    Editor[Code Editor<br/>ACP Client]
+    Agent[AI Agent<br/>ACP Server]
+    MCP[MCP Servers<br/>Tools/Data]
+
+    Editor <-->|ACP<br/>JSON-RPC over stdio| Agent
+    Agent <-->|MCP<br/>JSON-RPC over<br/>stdio/HTTP/SSE| MCP
+
+    style Editor fill:#e3f2fd
+    style Agent fill:#f3e5f5
+    style MCP fill:#fff9c4
 ```
 
 ### Typical Flow
 
-1. Editor sends prompt to agent via ACP
-2. Agent decides which tools to use
-3. Agent calls tools via MCP
-4. Tools return results via MCP
-5. Agent synthesizes results
-6. Agent sends response to editor via ACP
+```mermaid
+sequenceDiagram
+    participant Editor
+    participant Agent
+    participant MCP as MCP Servers
+
+    Editor->>Agent: 1. Send prompt (via ACP)
+    Note over Agent: 2. Decide which tools to use
+    Agent->>MCP: 3. Call tools (via MCP)
+    MCP-->>Agent: 4. Return results (via MCP)
+    Note over Agent: 5. Synthesize results
+    Agent-->>Editor: 6. Send response (via ACP)
+```
 
 ### Shared Data Structures
 
@@ -751,31 +768,66 @@ Automatic camelCase ↔ snake_case conversion via `:source` field mappings.
 
 ## Appendix: Complete Message Flow Example
 
-This example shows a complete interaction:
+This example shows a complete interaction demonstrating the bidirectional,
+streaming nature of the protocol:
 
-```
-CLIENT                          AGENT
-  │                               │
-  ├─ initialize ─────────────────>│
-  │<────────── InitializeResponse─┤
-  │                               │
-  ├─ session/new ────────────────>│
-  │<──────────── NewResponse ─────┤
-  │                               │
-  ├─ session/prompt ─────────────>│
-  │<─────── session/update ───────┤ (thought)
-  │<─────── session/update ───────┤ (message chunk)
-  │<─────── session/update ───────┤ (message chunk)
-  │                               │
-  │<── fs/read_text_file ─────────┤ (agent requests file)
-  ├─ FsReadTextFileResponse ─────>│
-  │                               │
-  │<─────── session/update ───────┤ (tool call)
-  │<─────── session/update ───────┤ (tool result)
-  │<─────── session/update ───────┤ (message chunk)
-  │                               │
-  │<────── PromptResponse ────────┤ (final response)
-  │                               │
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Agent
+
+    Note over Client,Agent: Connection Phase
+    Client->>Agent: initialize
+    Agent-->>Client: InitializeResponse
+
+    Note over Client,Agent: Session Phase
+    Client->>Agent: session/new
+    Agent-->>Client: NewResponse
+
+    Note over Client,Agent: Prompt Processing Phase
+    Client->>Agent: session/prompt
+    Agent-->>Client: session/update (thought)
+    Agent-->>Client: session/update (message chunk)
+    Agent-->>Client: session/update (message chunk)
+
+    Note over Client,Agent: Agent Requests File
+    Agent->>Client: fs/read_text_file
+    Client-->>Agent: FsReadTextFileResponse
+
+    Note over Client,Agent: Continue Processing
+    Agent-->>Client: session/update (tool call)
+    Agent-->>Client: session/update (tool result)
+    Agent-->>Client: session/update (message chunk)
+
+    Note over Client,Agent: Completion
+    Agent-->>Client: PromptResponse
 ```
 
-This demonstrates the bidirectional, streaming nature of the protocol.
+<script defer src="https://cdn.jsdelivr.net/npm/mermaid@10.2.3/dist/mermaid.min.js"></script>
+<script>
+  let initialized = false;
+
+  window.addEventListener("exdoc:loaded", () => {
+    if (!initialized) {
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: document.body.className.includes("dark") ? "dark" : "default"
+      });
+      initialized = true;
+    }
+
+    let id = 0;
+    for (const codeEl of document.querySelectorAll("pre code.mermaid")) {
+      const preEl = codeEl.parentElement;
+      const graphDefinition = codeEl.textContent;
+      const graphEl = document.createElement("div");
+      const graphId = "mermaid-graph-" + id++;
+      mermaid.render(graphId, graphDefinition).then(({svg, bindFunctions}) => {
+        graphEl.innerHTML = svg;
+        bindFunctions?.(graphEl);
+        preEl.insertAdjacentElement("afterend", graphEl);
+        preEl.remove();
+      });
+    }
+  });
+</script>

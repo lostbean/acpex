@@ -69,14 +69,16 @@ defmodule ACPex.MixProject do
         "docs/getting_started.md",
         "docs/building_agents.md",
         "docs/building_clients.md",
-        "docs/protocol_overview.md"
+        "docs/protocol_overview.md",
+        "docs/supervision_tree.md"
       ],
       groups_for_extras: [
         Guides: [
           "docs/getting_started.md",
           "docs/building_agents.md",
           "docs/building_clients.md",
-          "docs/protocol_overview.md"
+          "docs/protocol_overview.md",
+          "docs/supervision_tree.md"
         ]
       ],
       groups_for_modules: [
