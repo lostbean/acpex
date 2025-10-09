@@ -53,7 +53,8 @@ defmodule ACPex.MixProject do
       links: %{
         "GitHub" => @source_url,
         "Protocol Spec" => "https://agentclientprotocol.com"
-      }
+      },
+      files: ~w(lib livebooks .formatter.exs mix.exs README.md LICENSE usage-rules.md)
     ]
   end
 
