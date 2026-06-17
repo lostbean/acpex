@@ -35,13 +35,19 @@
 
         claude-code-acp = pkgs.callPackage ./nix/claude-code-acp.nix { };
 
+        # Pin Elixir 1.20 on OTP 28. The default `elixir` attr still tracks
+        # 1.18, so select the explicit beam package for the toolchain.
+        beam = pkgs.unstable.beam.packages.erlang_28;
+        elixir = beam.elixir_1_20;
+        erlang = pkgs.unstable.erlang_28;
+
         shell = pkgs.mkShell {
           buildInputs =
             with pkgs;
             [
-              unstable.elixir
-              unstable.elixir-ls
-              unstable.erlang
+              elixir
+              beam.elixir-ls
+              erlang
               unstable.livebook
               rebar3
               nodePackages.prettier
