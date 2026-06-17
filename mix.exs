@@ -8,7 +8,7 @@ defmodule ACPex.MixProject do
     [
       app: :acpex,
       version: @version,
-      elixir: "~> 1.14",
+      elixir: "~> 1.20",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       docs: docs(),
@@ -17,8 +17,13 @@ defmodule ACPex.MixProject do
       name: "ACPex",
       source_url: @source_url,
       elixirc_paths: elixirc_paths(Mix.env()),
-      aliases: aliases(),
-      preferred_cli_env: [precommit: :test]
+      aliases: aliases()
+    ]
+  end
+
+  def cli do
+    [
+      preferred_envs: [precommit: :test]
     ]
   end
 
