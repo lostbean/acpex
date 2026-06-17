@@ -40,8 +40,7 @@ defmodule ACPex.MixProject do
       {:ecto, "~> 3.11"},
       {:stream_data, "~> 1.1", only: :test},
       {:ex_doc, "~> 0.30", only: :dev, runtime: false},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4", only: [:dev], runtime: false}
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end
 
