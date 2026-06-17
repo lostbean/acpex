@@ -38,8 +38,13 @@ jobs:
             ${{ runner.os }}-mix-
       - name: Install Mix dependencies
         run: nix develop -c mix deps.get
-      - name: Compile project
-        run: nix develop -c mix compile --warnings-as-errors
+      # Type-check gate: replaces Dialyzer. Leans on the Elixir 1.20
+      # set-theoretic (gradual) type checker that runs during `mix compile`,
+      # with --warnings-as-errors promoting any type/compile warning to a
+      # build failure. --force triggers a full recompile so the checker sees
+      # the whole project, not just changed modules.
+      - name: Compile project (type-check gate)
+        run: nix develop -c mix compile --warnings-as-errors --force
       - name: Run tests
         run: nix develop -c mix test
       - name: Check code formatting
